@@ -1,0 +1,132 @@
+---
+title: "Error Handling"
+description: "Handle API errors, network failures, and authentication errors in your Microsoft Graph application."
+---
+
+The Microsoft Graph SDK for Python raises exceptions for failed requests. Understanding the error types and their properties lets you build resilient applications that recover gracefully from transient failures and surface useful diagnostics for permanent ones.
+
+## APIError
+
+All 4xx and 5xx HTTP responses raise an `APIError` exception from the `kiota_abstractions` package. Wrap your awaited calls in a `try`/`except` block to catch these errors:
+
+```python
+from kiota_abstractions.api_error import APIError
+
+async def get_user():
+    try:
+        user = await client.users.by_user_id('userID').get()
+        print(user.user_principal_name, user.display_name, user.id)
+    except APIError as e:
+        print(f'Error: {e.error.message}')
+
+asyncio.run(get_user())
+```
+
+### APIError properties
+
+<AccordionGroup>
+  <Accordion title="e.error.message">
+    A human-readable description of the error returned by the Microsoft Graph API. For example: `"Resource 'xxx' does not exist or one of its queried reference-property objects are not present."`.
+  </Accordion>
+  <Accordion title="e.response_status_code">
+    The HTTP status code as an integer (e.g., `404`, `403`, `429`). Use this to branch error handling logic based on the type of failure.
+  </Accordion>
+  <Accordion title="e.error.code">
+    A machine-readable error code string returned by the API (e.g., `"Request_ResourceNotFound"`, `"Authorization_RequestDenied"`). Useful for programmatic error handling.
+  </Accordion>
+</AccordionGroup>
+
+## Common error codes
+
+<AccordionGroup>
+  <Accordion title="401 Unauthorized">
+    The access token is missing, expired, or invalid. Verify that your credential is configured correctly and that the token has not expired. Azure Identity handles token refresh automatically in most cases — if you receive a 401, check that your tenant ID, client ID, and client secret are correct.
+  </Accordion>
+  <Accordion title="403 Forbidden">
+    The token is valid but lacks the required permission for the operation. Check that your app registration has the correct Microsoft Graph permissions granted, and that admin consent has been provided where required.
+  </Accordion>
+  <Accordion title="404 Not Found">
+    The resource does not exist. The user ID, group ID, or other identifier in your request does not correspond to an existing object in the tenant.
+  </Accordion>
+  <Accordion title="429 Too Many Requests">
+    Your application has exceeded the Microsoft Graph throttling limits. Back off and retry after the interval specified in the `Retry-After` response header.
+  </Accordion>
+</AccordionGroup>
+
+## Handling 429 rate limiting
+
+When your application is throttled, Microsoft Graph returns a `429 Too Many Requests` response with a `Retry-After` header indicating how many seconds to wait before retrying.
+
+```python
+import asyncio
+from kiota_abstractions.api_error import APIError
+
+async def get_user_with_retry(user_id: str, max_retries: int = 3):
+    for attempt in range(max_retries):
+        try:
+            user = await client.users.by_user_id(user_id).get()
+            return user
+        except APIError as e:
+            if e.response_status_code == 429:
+                wait_seconds = 2 ** attempt  # exponential backoff
+                print(f'Throttled. Retrying in {wait_seconds}s...')
+                await asyncio.sleep(wait_seconds)
+            else:
+                raise
+    raise RuntimeError(f'Request failed after {max_retries} retries')
+
+asyncio.run(get_user_with_retry('USER_ID'))
+```
+
+<Tip>
+The Microsoft Graph SDK does not automatically retry throttled requests. Implement retry logic in your application, or use a middleware layer such as `kiota_http` retry handler if you need automatic retries across all requests.
+</Tip>
+
+## Checking for None
+
+Many response properties are optional and can be `None` even on a successful 200 response. Always guard against `None` before accessing nested properties:
+
+```python
+async def get_user_safe():
+    try:
+        user = await client.users.by_user_id('USER_ID').get()
+        if user:
+            # user.mail can be None for accounts without a mailbox
+            print(user.display_name, user.mail or 'no mail')
+    except APIError as e:
+        print(f'Error {e.response_status_code}: {e.error.message}')
+
+asyncio.run(get_user_safe())
+```
+
+<Note>
+Collection responses return a `value` list. Check both that the response itself is not `None` and that `response.value` is not `None` or empty before iterating.
+</Note>
+
+## Distinguishing error types
+
+Use `response_status_code` to implement different behavior for different failure modes:
+
+```python
+from kiota_abstractions.api_error import APIError
+
+async def fetch_resource(resource_id: str):
+    try:
+        result = await client.users.by_user_id(resource_id).get()
+        return result
+    except APIError as e:
+        if e.response_status_code == 404:
+            print(f'User {resource_id} not found.')
+            return None
+        elif e.response_status_code == 403:
+            print('Insufficient permissions. Check your app registration.')
+            raise
+        elif e.response_status_code == 401:
+            print('Authentication failed. Check your credentials.')
+            raise
+        else:
+            print(f'Unexpected error {e.response_status_code}: {e.error.message}')
+            raise
+
+asyncio.run(fetch_resource('USER_ID'))
+```

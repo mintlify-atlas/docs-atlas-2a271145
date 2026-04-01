@@ -1,0 +1,272 @@
+---
+title: "Mail"
+description: "Examples for reading messages and sending email using Microsoft Graph."
+---
+
+<Info>
+  Reading messages (`Mail.Read`) uses application permissions and works with any user ID. Sending mail (`Mail.Send`) requires **delegated** permissions — the request must be made on behalf of a signed-in user via an interactive credential.
+</Info>
+
+## Prerequisites
+
+<CardGroup cols={2}>
+  <Card title="Mail.Read" icon="envelope-open">
+    Required to list and read messages from a user's mailbox.
+  </Card>
+  <Card title="Mail.Send" icon="paper-plane">
+    Required to send email as the signed-in user. Use `Mail.Send.Shared` for shared mailboxes.
+  </Card>
+</CardGroup>
+
+<Warning>
+  The `/me` endpoint requires **delegated access** (a signed-in user). Use `InteractiveBrowserCredential` or `DeviceCodeCredential` — not `ClientSecretCredential` — for send mail operations.
+</Warning>
+
+---
+
+## Reading messages
+
+### Get messages from a user's mailbox
+
+Retrieves messages from a specific user's inbox (`GET /users/{id}/messages`).
+
+```python
+import asyncio
+
+from azure.identity import ClientSecretCredential
+from msgraph import GraphServiceClient
+
+credential = ClientSecretCredential(
+    tenant_id='TENANT_ID',
+    client_id='CLIENT_ID',
+    client_secret='CLIENT_SECRET'
+)
+scopes = ['https://graph.microsoft.com/.default']
+client = GraphServiceClient(credentials=credential, scopes=scopes)
+
+async def get_user_messages():
+    messages = await (client.users.by_user_id('USER_ID').messages.get())
+    if messages and messages.value:
+        for msg in messages.value:
+            print(msg.subject, msg.id, msg.from_)
+asyncio.run(get_user_messages())
+```
+
+---
+
+### Get messages with `$select` and `$top` query parameters
+
+Fetches the first 5 messages (skipping 2), returning only the `subject` and `from` fields.
+
+```python
+import asyncio
+
+from azure.identity import ClientSecretCredential
+from msgraph import GraphServiceClient
+from msgraph.generated.users.item.messages.messages_request_builder import MessagesRequestBuilder
+
+credential = ClientSecretCredential(
+    tenant_id='TENANT_ID',
+    client_id='CLIENT_ID',
+    client_secret='CLIENT_SECRET'
+)
+scopes = ['https://graph.microsoft.com/.default']
+client = GraphServiceClient(credentials=credential, scopes=scopes)
+
+async def get_5_user_messages():
+    query_params = MessagesRequestBuilder.MessagesRequestBuilderGetQueryParameters(
+        select=['subject', 'from'], skip=2, top=5
+    )
+    request_config = MessagesRequestBuilder.MessagesRequestBuilderGetRequestConfiguration(
+        query_parameters=query_params
+    )
+
+    messages = await (client.users.by_user_id('USER_ID')
+                    .messages
+                    .get(request_configuration=request_config))
+    if messages and messages.value:
+        for msg in messages.value:
+            print(msg.subject)
+asyncio.run(get_5_user_messages())
+```
+
+<Tip>
+  Use `$select` to limit the fields returned and reduce payload size. Common fields include `subject`, `from`, `receivedDateTime`, `isRead`, `body`, and `toRecipients`.
+</Tip>
+
+---
+
+## Sending mail
+
+### Send mail with user delegation
+
+Sends an email on behalf of a signed-in user using `InteractiveBrowserCredential`. This opens a browser window for the user to authenticate.
+
+<Steps>
+  <Step title="Configure app registration">
+    In your Azure app registration:
+    - Go to **Authentication** > **Add a platform** > select **Mobile and desktop applications**
+    - Set `http://localhost` as the redirect URI
+    - Enable **Allow public client flows**
+    - Under **API permissions**, add `Mail.Send` (delegated) and grant admin consent if required
+  </Step>
+  <Step title="Install dependencies">
+    ```bash
+    pip install msgraph-sdk azure-identity
+    ```
+  </Step>
+  <Step title="Send the email">
+    ```python
+    import asyncio
+    from msgraph import GraphServiceClient
+
+    from msgraph.generated.users.item.send_mail.send_mail_post_request_body import SendMailPostRequestBody
+    from msgraph.generated.models.body_type import BodyType
+    from msgraph.generated.models.message import Message
+    from msgraph.generated.models.email_address import EmailAddress
+    from msgraph.generated.models.importance import Importance
+    from msgraph.generated.models.item_body import ItemBody
+    from msgraph.generated.models.recipient import Recipient
+    from msgraph.generated.users.item.messages.messages_request_builder import MessagesRequestBuilder
+
+    from azure.identity import InteractiveBrowserCredential
+
+    credential = InteractiveBrowserCredential(
+        client_id,
+        authority,
+        tenant_id,
+        redirect_uri
+    )
+    scopes = ['Mail.Send']
+    # alternatively, use "Mail.Send.Shared" for a shared mailbox.
+
+    client = GraphServiceClient(credentials=credential, scopes=scopes)
+
+    async def send_mail():
+
+        sender = EmailAddress()
+        sender.address = 'john.doe@outlook.com'
+        sender.name = 'John Doe'
+
+        from_recipient = Recipient()
+        from_recipient.email_address = sender
+        recipients = []
+
+        recipient_email = EmailAddress()
+        recipient_email.address = 'jane.doe@outlook.com'
+        recipient_email.name = 'Jane Doe'
+
+        to_recipient = Recipient()
+        to_recipient.email_address = recipient_email
+        recipients.append(to_recipient)
+
+        email_body = ItemBody()
+        email_body.content = 'Dummy content'
+        email_body.content_type = BodyType.Text
+
+        message = Message()
+        message.subject = 'Test Email'
+        message.from_escaped = from_recipient
+        message.to_recipients = recipients
+        message.body = email_body
+
+        request_body = SendMailPostRequestBody()
+        request_body.message = message
+        response = await client.me.send_mail.post(request_body)
+    asyncio.run(send_mail())
+    ```
+  </Step>
+</Steps>
+
+---
+
+### Send from a shared mailbox
+
+To send on behalf of a shared mailbox, set both `sender` (the delegating user) and `from_` (the shared mailbox address) on the `Message` object.
+
+<Warning>
+  Sending from a shared mailbox requires the `Mail.Send.Shared` permission scope instead of `Mail.Send`. The authenticated user must have "Send As" or "Send on Behalf" access to the shared mailbox.
+</Warning>
+
+```python
+import asyncio
+from msgraph import GraphServiceClient
+
+from msgraph.generated.models.body_type import BodyType
+from msgraph.generated.models.message import Message
+from msgraph.generated.models.email_address import EmailAddress
+from msgraph.generated.models.item_body import ItemBody
+from msgraph.generated.models.recipient import Recipient
+from msgraph.generated.users.item.send_mail.send_mail_post_request_body import SendMailPostRequestBody
+
+from azure.identity import InteractiveBrowserCredential
+
+# Create a credential object. Used to authenticate requests
+credential = InteractiveBrowserCredential(
+    client_id,
+    authority, # e.g. https://login.microsoftonline.com/ for public Azure cloud
+    tenant_id,
+    redirect_uri # as configured in your App Registration > Authentication > Platform: Mobile and desktop applications
+)
+scopes = ["Mail.Send.Shared"]
+
+# Create an API client with the credentials and scopes.
+client = GraphServiceClient(credentials=credential, scopes=scopes)
+
+
+async def send_mail():
+    sender = EmailAddress()
+    sender.address = 'john.doe@outlook.com'
+    sender.name = 'John Doe' # skip to use default
+
+    sender_recipient = Recipient()
+    sender_recipient.email_address = sender
+
+    from_mailbox = EmailAddress()
+    from_mailbox.address = 'your-shared-mailbox@outlook.com'
+    # skip from_mailbox.name = ... to use the default display name of the shared mailbox
+
+    from_recipient = Recipient()
+    from_recipient.email_address = from_mailbox
+
+    recipients = []
+    recipient_email = EmailAddress()
+    recipient_email.address = 'jane.doe@outlook.com'
+    recipient_email.name = 'Jane Doe'
+
+    to_recipient = Recipient()
+    to_recipient.email_address = recipient_email
+    recipients.append(to_recipient)
+
+    email_body = ItemBody()
+    email_body.content = 'Dummy content'
+    email_body.content_type = BodyType.Text
+
+    message = Message()
+    message.subject = 'Test Email'
+    message.sender = sender_recipient
+    message.from_ = from_recipient
+    message.to_recipients = recipients
+    message.body = email_body
+
+    request_body = SendMailPostRequestBody()
+    request_body.message = message
+    response = await client.me.send_mail.post(request_body)
+asyncio.run(send_mail())
+```
+
+---
+
+## Required permissions
+
+<AccordionGroup>
+  <Accordion title="Read messages (GET /users/{id}/messages)">
+    Requires `Mail.Read` or `Mail.ReadWrite` (application or delegated).
+  </Accordion>
+  <Accordion title="Send mail (POST /me/sendMail)">
+    Requires `Mail.Send` (delegated). This endpoint only works with delegated credentials — the user must be signed in.
+  </Accordion>
+  <Accordion title="Send from shared mailbox">
+    Requires `Mail.Send.Shared` (delegated). The signed-in user must have "Send As" or "Send on Behalf" permissions on the shared mailbox.
+  </Accordion>
+</AccordionGroup>

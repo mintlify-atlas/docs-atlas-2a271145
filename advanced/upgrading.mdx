@@ -1,0 +1,190 @@
+---
+title: "Upgrade Guide"
+description: "Migrate from msgraph-core to msgraph-sdk, with a summary of breaking changes and new features."
+---
+
+This guide covers the breaking changes and new features introduced when migrating from the legacy `msgraph-core` package to the current `msgraph-sdk` package.
+
+## Installation
+
+<CodeGroup>
+
+```bash msgraph-core (legacy)
+pip install msgraph-core
+```
+
+```bash msgraph-sdk (current)
+pip install msgraph-sdk
+```
+
+</CodeGroup>
+
+<Warning>
+  `msgraph-sdk` requires Python 3.9 or later. Python 3.8 support was dropped in v1.17.0.
+</Warning>
+
+## New features
+
+### Strongly-typed model classes
+
+`msgraph-sdk` ships auto-generated model classes that match objects accepted and returned by the Microsoft Graph v1.0 API. Every property, method, and return type is fully typed using Python's `typing` module, enabling IDE autocomplete and static analysis with tools like `mypy`.
+
+Models are generated from the [Microsoft Graph v1 API metadata](https://graph.microsoft.com/v1.0/$metadata). For the Beta API, use the [Microsoft Graph Beta Python SDK](https://github.com/microsoftgraph/msgraph-sdk-beta-python).
+
+### Fluent request builder pattern
+
+Instead of constructing raw URL strings, `msgraph-sdk` provides a fluent interface where each path segment is a typed property or method call. IDE autocomplete guides you through the available resources and operations without referring to external reference docs.
+
+<CodeGroup>
+
+```python msgraph-core (legacy)
+resp = client.get('/users/userId/messages')
+```
+
+```python msgraph-sdk (current)
+import asyncio
+
+req = client.users.by_user_id('userId').messages.get()
+resp = asyncio.run(req)
+```
+
+</CodeGroup>
+
+## Breaking changes
+
+### Authentication
+
+`msgraph-sdk` uses `AzureIdentityAuthenticationProvider` from the `kiota-authentication-azure` package. This provider handles token acquisition, caching, and refresh automatically. It expects an **async** credential class from `azure.identity.aio`.
+
+<CodeGroup>
+
+```python msgraph-core (legacy)
+from azure.identity import ClientSecretCredential
+from msgraph.core import GraphClient
+
+credential = ClientSecretCredential(
+    tenant_id='TENANT_ID',
+    client_id='CLIENT_ID',
+    client_secret='CLIENT_SECRET',
+)
+```
+
+```python msgraph-sdk (current)
+from azure.identity.aio import ClientSecretCredential  # async credentials
+from kiota_authentication_azure.azure_identity_authentication_provider import (
+    AzureIdentityAuthenticationProvider,
+)
+
+credential = ClientSecretCredential(
+    tenant_id='TENANT_ID',
+    client_id='CLIENT_ID',
+    client_secret='CLIENT_SECRET',
+)
+auth_provider = AzureIdentityAuthenticationProvider(credential)
+```
+
+</CodeGroup>
+
+<Info>
+  `GraphServiceClient` can wrap credentials directly — pass `credentials` and `scopes` and it will create the `AzureIdentityAuthenticationProvider` for you. The manual construction above is needed only when you also want to supply a custom `GraphRequestAdapter`.
+</Info>
+
+### Client instantiation
+
+`msgraph-sdk` splits client construction into two objects: a `GraphRequestAdapter` that handles all HTTP processing, and a `GraphServiceClient` that holds the typed request builders. With the simplified API you can pass credentials directly to `GraphServiceClient`.
+
+<CodeGroup>
+
+```python msgraph-core (legacy)
+from msgraph.core import GraphClient
+
+client = GraphClient(credential=credential)
+```
+
+```python msgraph-sdk (current) — simplified
+from azure.identity.aio import ClientSecretCredential
+from msgraph import GraphServiceClient
+
+credentials = ClientSecretCredential('TENANT_ID', 'CLIENT_ID', 'CLIENT_SECRET')
+scopes = ['https://graph.microsoft.com/.default']
+client = GraphServiceClient(credentials=credentials, scopes=scopes)
+```
+
+```python msgraph-sdk (current) — with custom adapter
+from msgraph import GraphRequestAdapter, GraphServiceClient
+
+adapter = GraphRequestAdapter(auth_provider)
+client = GraphServiceClient(request_adapter=adapter)
+```
+
+</CodeGroup>
+
+### Request execution
+
+All requests in `msgraph-sdk` are **asynchronous by default** and return a coroutine. Run them with `asyncio.run()` or from within an `async` function. Query parameters, headers, and middleware options are passed via a typed `RequestConfiguration` object rather than raw keyword arguments.
+
+<CodeGroup>
+
+```python msgraph-core (legacy)
+result = client.get(
+    '/users/userId/messages',
+    params={'$select': 'subject', '$top': '5', '$skip': '1'}
+)
+for message in result.json()['value']:
+    print(message['subject'])
+```
+
+```python msgraph-sdk (current)
+import asyncio
+from msgraph.generated.users.item.messages.messages_request_builder import (
+    MessagesRequestBuilder,
+)
+
+query_params = MessagesRequestBuilder.MessagesRequestBuilderGetQueryParameters(
+    select=['subject'],
+    skip=1,
+    top=5,
+)
+request_config = MessagesRequestBuilder.MessagesRequestBuilderGetRequestConfiguration(
+    query_parameters=query_params,
+)
+
+messages = asyncio.run(
+    client.users.by_user_id('userId').messages.get(request_configuration=request_config)
+)
+for msg in messages.value:
+    print(msg.subject)
+```
+
+</CodeGroup>
+
+### Exception handling
+
+HTTP `4xx` and `5xx` responses now raise `APIError` instead of surfacing raw HTTP errors. Wrap calls in a `try`/`except` block to handle them:
+
+```python
+import asyncio
+from kiota_abstractions.api_error import APIError
+
+async def get_user():
+    try:
+        user = await client.users.by_user_id('USER_ID').get()
+        print(user.display_name)
+    except APIError as e:
+        print(f'Error: {e.error.message}')
+
+asyncio.run(get_user())
+```
+
+### Dependency changes
+
+| Area | msgraph-core (legacy) | msgraph-sdk (current) |
+|---|---|---|
+| HTTP transport | `requests` (sync) | `httpx` (async) |
+| Async runtime | Not required | `asyncio`, `anyio`, or `trio` |
+| Minimum Python | 3.6 | 3.9 |
+| Authentication | `azure-identity` (sync credentials) | `azure-identity` (async credentials preferred) |
+
+<Note>
+  Support for Python 3.8 was removed in `msgraph-sdk` v1.17.0. Ensure your environment runs Python 3.9 or later before upgrading.
+</Note>

@@ -1,0 +1,162 @@
+---
+title: "Basic Requests"
+description: "Use the fluent request builder to make GET, POST, PATCH, and DELETE requests to Microsoft Graph."
+---
+
+The Microsoft Graph SDK for Python uses a fluent request builder pattern. Each segment of a Graph API URL corresponds to a chained property or method on `GraphServiceClient`, ending with an execution method such as `get()`, `post()`, `patch()`, or `delete()`.
+
+<Note>
+All execution methods are async coroutines and must be awaited. Use `asyncio.run()` or your preferred async runner to invoke them.
+</Note>
+
+## The fluent builder pattern
+
+The request builder mirrors the Microsoft Graph REST URL structure:
+
+| Graph REST URL | SDK equivalent |
+|---|---|
+| `GET /users` | `client.users.get()` |
+| `GET /users/{id}` | `client.users.by_user_id('id').get()` |
+| `GET /me` | `client.me.get()` |
+| `GET /users/{id}/messages` | `client.users.by_user_id('id').messages.get()` |
+
+Each segment builds on the previous one, and the final method triggers the HTTP request.
+
+## GET a single resource
+
+Use `by_user_id()` to address a specific user by object ID or user principal name, then call `get()`:
+
+```python
+async def get_user():
+    user = await client.users.by_user_id('userPrincipalName').get()
+    if user:
+        print(user.display_name)
+
+asyncio.run(get_user())
+```
+
+<Note>
+Always check that the response is not `None` before accessing its properties. Many response fields can also be `None` if they are not populated by the API.
+</Note>
+
+## GET a collection
+
+Call `get()` directly on a collection builder. The response includes a `value` list of deserialized model objects:
+
+```python
+async def get_users():
+    users = await client.users.get()
+    if users and users.value:
+        for user in users.value:
+            print(user.id, user.display_name, user.mail)
+
+asyncio.run(get_users())
+```
+
+## POST (create a resource)
+
+Build the request body using model classes provided by the SDK, then call `post()`:
+
+```python
+from msgraph.generated.models.message import Message
+from msgraph.generated.models.item_body import ItemBody
+from msgraph.generated.models.body_type import BodyType
+from msgraph.generated.models.recipient import Recipient
+from msgraph.generated.models.email_address import EmailAddress
+from msgraph.generated.users.item.send_mail.send_mail_post_request_body import SendMailPostRequestBody
+
+async def send_mail():
+    recipient_email = EmailAddress()
+    recipient_email.address = 'jane.doe@outlook.com'
+    recipient_email.name = 'Jane Doe'
+
+    to_recipient = Recipient()
+    to_recipient.email_address = recipient_email
+
+    email_body = ItemBody()
+    email_body.content = 'Hello from the Microsoft Graph SDK for Python.'
+    email_body.content_type = BodyType.Text
+
+    message = Message()
+    message.subject = 'Test Email'
+    message.to_recipients = [to_recipient]
+    message.body = email_body
+
+    request_body = SendMailPostRequestBody()
+    request_body.message = message
+
+    await client.me.send_mail.post(request_body)
+
+asyncio.run(send_mail())
+```
+
+## PATCH (update a resource)
+
+Build an object with only the fields you want to update, then call `patch()`:
+
+```python
+from msgraph.generated.models.user import User
+
+async def update_user():
+    request_body = User()
+    request_body.display_name = 'Updated Display Name'
+
+    updated_user = await client.users.by_user_id('USER_ID').patch(request_body)
+    if updated_user:
+        print(updated_user.display_name)
+
+asyncio.run(update_user())
+```
+
+## DELETE
+
+Call `delete()` on the resource you want to remove. This method returns `None` on success:
+
+```python
+async def delete_user():
+    await client.users.by_user_id('USER_ID').delete()
+
+asyncio.run(delete_user())
+```
+
+## The `me` shortcut
+
+`client.me` maps requests to the `/me` endpoint, which resolves to the currently signed-in user. It returns the same `UserItemRequestBuilder` as `client.users.by_user_id(...)`, so all sub-resources are available:
+
+```python
+async def get_me():
+    me = await client.me.get()
+    if me:
+        print(me.user_principal_name, me.display_name, me.id)
+
+asyncio.run(get_me())
+```
+
+<Warning>
+The `/me` endpoint requires a signed-in user and **delegated permissions**. It is not available with app-only (application) permissions. Use `client.users.by_user_id('USER_ID')` for app-only scenarios.
+</Warning>
+
+## Full working example
+
+The following example sets up a client and fetches the signed-in user using delegated credentials:
+
+```python
+import asyncio
+import os
+from azure.identity import InteractiveBrowserCredential
+from msgraph import GraphServiceClient
+
+credential = InteractiveBrowserCredential(
+    client_id=os.getenv('CLIENT_ID'),
+    tenant_id=os.getenv('TENANT_ID'),
+)
+scopes = ['User.Read']
+client = GraphServiceClient(credentials=credential, scopes=scopes)
+
+async def get_me():
+    me = await client.me.get()
+    if me:
+        print(me.user_principal_name, me.display_name, me.id)
+
+asyncio.run(get_me())
+```

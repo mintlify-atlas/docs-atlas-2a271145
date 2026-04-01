@@ -1,0 +1,87 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "Microsoft Graph SDK for Python",
+  "projectDescription": "A Python SDK for integrating with the Microsoft Graph API, providing strongly-typed request builders, model classes, and async-first support for accessing Microsoft 365 data and services.",
+  "theme": "luma",
+  "primaryColor": "#fac704",
+  "lightColor": "#c12306",
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Authentication",
+            "pages": [
+              "authentication/overview",
+              "authentication/application-permissions",
+              "authentication/delegated-permissions"
+            ]
+          },
+          {
+            "group": "Making Requests",
+            "pages": [
+              "requests/basic-requests",
+              "requests/query-parameters",
+              "requests/pagination",
+              "requests/batch-requests",
+              "requests/error-handling"
+            ]
+          },
+          {
+            "group": "Examples",
+            "pages": [
+              "examples/users",
+              "examples/groups",
+              "examples/mail",
+              "examples/applications",
+              "examples/drives"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/custom-client",
+              "advanced/middleware",
+              "advanced/upgrading"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Async-first API using Python asyncio, anyio, or trio",
+    "Fluent request builder pattern with IDE autocomplete",
+    "Strongly-typed model classes auto-generated from Graph API metadata",
+    "Built-in authentication with Azure Identity (delegated and application permissions)",
+    "Automatic pagination support via odata_next_link",
+    "Batch request support",
+    "Configurable HTTP middleware and proxy support",
+    "Support for Python 3.9 through 3.13"
+  ],
+  "publicApiSurface": [
+    "GraphServiceClient(credentials, scopes, request_adapter)",
+    "GraphRequestAdapter(auth_provider, client)",
+    "client.users.get()",
+    "client.users.by_user_id(id).get()",
+    "client.groups.get()",
+    "client.groups.by_group_id(id).get()",
+    "client.me.get()",
+    "client.me.send_mail.post(body)",
+    "client.applications.get()",
+    "client.drives.get()",
+    "client.batch",
+    "RequestConfiguration(headers, query_parameters, options)",
+    "APIError"
+  ]
+}

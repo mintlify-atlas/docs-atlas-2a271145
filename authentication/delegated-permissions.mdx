@@ -1,0 +1,123 @@
+---
+title: "Delegated Permissions"
+description: "Authenticate on behalf of a signed-in user using device code, browser, or authorization code flows."
+---
+
+Delegated permissions are used when your app acts on behalf of a signed-in user. The access token carries the user's identity, which enables:
+
+- Accessing the `/me` endpoint to read the current user's profile, mail, calendar, and more
+- Writing data that belongs to the user, such as sending mail or creating calendar events
+- Enforcing the user's own access controls — the app cannot access data the user themselves cannot access
+
+<Note>
+  Calling `/me` requires a signed-in user. If you try to access `/me` with application permissions (no user context), the request will fail. Use a delegated flow from this page instead.
+</Note>
+
+## App registration requirements
+
+Before using any delegated flow, your app registration in Azure AD must have the required delegated permissions added and, for most flows, the **public client (mobile and desktop)** setting enabled under **Authentication**. This applies to device code and interactive browser flows.
+
+Follow the [Register your app with the Microsoft Identity Platform](https://docs.microsoft.com/graph/auth-register-app-v2) guide to create or update your registration.
+
+## DeviceCodeCredential
+
+The device code flow prompts the user to open a URL on any device and enter a short code to complete authentication. This is the right choice for environments without a browser, such as headless servers or SSH sessions.
+
+```python
+import asyncio
+from azure.identity import DeviceCodeCredential
+from msgraph import GraphServiceClient
+
+credential = DeviceCodeCredential(
+    client_id='CLIENT_ID',
+    tenant_id='TENANT_ID',
+)
+scopes = ['https://graph.microsoft.com/.default']
+client = GraphServiceClient(credentials=credential, scopes=scopes)
+```
+
+When your code acquires a token for the first time, it prints a message like:
+
+```
+To sign in, use a web browser to open the page https://microsoft.com/devicelogin and enter the code XXXXXXXXX to authenticate.
+```
+
+The user completes the sign-in on their own device, and the credential resolves once authentication is confirmed.
+
+<Tip>
+  You can pass a `prompt_callback` parameter to `DeviceCodeCredential` to control how the device code message is displayed to users in your application.
+</Tip>
+
+## InteractiveBrowserCredential
+
+The interactive browser flow opens the system browser and redirects the user through the standard Microsoft login page. Use this when a browser is available on the machine running your application.
+
+```python
+import asyncio
+from azure.identity import InteractiveBrowserCredential
+from msgraph import GraphServiceClient
+
+credential = InteractiveBrowserCredential(
+    client_id='CLIENT_ID',
+    tenant_id='TENANT_ID',
+)
+scopes = ['User.Read']
+client = GraphServiceClient(credentials=credential, scopes=scopes)
+```
+
+### Reading the signed-in user's profile
+
+```python
+import asyncio
+from azure.identity import InteractiveBrowserCredential
+from msgraph import GraphServiceClient
+
+credential = InteractiveBrowserCredential(
+    client_id='CLIENT_ID',
+    tenant_id='TENANT_ID',
+)
+scopes = ['User.Read']
+client = GraphServiceClient(credentials=credential, scopes=scopes)
+
+async def me():
+    user = await client.me.get()
+    if user:
+        print(user.display_name)
+
+asyncio.run(me())
+```
+
+## Choosing scopes
+
+For delegated flows you can request resource-specific scopes instead of `.default`. The scopes you request must match the delegated permissions configured on your app registration.
+
+| Scope | What it grants |
+|---|---|
+| `User.Read` | Read the signed-in user's profile |
+| `Mail.Read` | Read the user's mail |
+| `Mail.Send` | Send mail as the user |
+| `Mail.ReadWrite` | Read and write the user's mail |
+| `Calendars.ReadWrite` | Read and write the user's calendar |
+
+<Tabs>
+  <Tab title="Single scope">
+    ```python
+    scopes = ['User.Read']
+    ```
+  </Tab>
+  <Tab title="Multiple scopes">
+    ```python
+    scopes = ['User.Read', 'Mail.ReadWrite', 'Mail.Send']
+    ```
+  </Tab>
+  <Tab title="Default scope">
+    ```python
+    # Grants all delegated permissions pre-configured on the app registration
+    scopes = ['https://graph.microsoft.com/.default']
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+  Requesting more scopes than your application needs violates the principle of least privilege. Request only the scopes required for the current operation.
+</Warning>

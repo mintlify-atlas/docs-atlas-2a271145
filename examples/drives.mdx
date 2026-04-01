@@ -1,0 +1,189 @@
+---
+title: "Drives"
+description: "Examples for accessing OneDrive files and SharePoint document libraries via Microsoft Graph."
+---
+
+<Info>
+  The drives API provides access to OneDrive personal drives, OneDrive for Business drives, and SharePoint document libraries. These examples use `ClientSecretCredential` with application permissions.
+</Info>
+
+## Client setup
+
+<Steps>
+  <Step title="Install the SDK">
+    ```bash
+    pip install msgraph-sdk
+    ```
+  </Step>
+  <Step title="Configure credentials and initialize the client">
+    ```python
+    import asyncio
+
+    from azure.identity import ClientSecretCredential
+    from msgraph import GraphServiceClient
+
+    # Create a credential object. Used to authenticate requests
+    credential = ClientSecretCredential(
+        tenant_id='TENANT_ID',
+        client_id='CLIENT_ID',
+        client_secret='CLIENT_SECRET'
+    )
+    scopes = ['https://graph.microsoft.com/.default']
+
+    # Create an API client with the credentials and scopes.
+    client = GraphServiceClient(credentials=credential, scopes=scopes)
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  Replace `TENANT_ID`, `CLIENT_ID`, and `CLIENT_SECRET` with values from your Azure app registration. Store secrets in environment variables — never hard-code them.
+</Note>
+
+---
+
+## Examples
+
+### List all drives
+
+Retrieves all drives accessible to the application (`GET /drives`).
+
+```python
+async def get_drives():
+    drives = await client.drives.get()
+    if drives and drives.value:
+        for drive in drives.value:
+            print(drive.id, drive.drive_type, drive.name, drive.description, drive.web_url)
+asyncio.run(get_drives())
+```
+
+<Tip>
+  `drive_type` will be one of `personal` (OneDrive personal), `business` (OneDrive for Business), or `documentLibrary` (SharePoint document library).
+</Tip>
+
+---
+
+### Get a drive by ID
+
+Retrieves a specific drive by its ID (`GET /drives/{id}`).
+
+```python
+async def get_drive():
+    drive = await client.drives.by_drive_id('DRIVE_ID').get()
+    if drive:
+        print(drive.id, drive.drive_type, drive.name, drive.description, drive.web_url)
+asyncio.run(get_drive())
+```
+
+---
+
+### List all items in a drive
+
+Retrieves all drive items (files and folders) within a drive (`GET /drives/{id}/items`).
+
+```python
+async def get_drive_items():
+    items = await client.drives.by_drive_id('DRIVE_ID').items.get()
+    if items and items.value:
+        for item in items.value:
+            print(item.id, item.name, item.size, item.folder, item.file)
+asyncio.run(get_drive_items())
+```
+
+<Note>
+  Each item has either a `folder` or `file` facet (the other will be `None`). Use this to distinguish between directories and files.
+</Note>
+
+---
+
+### Get a specific item in a drive
+
+Retrieves a single drive item by its ID (`GET /drives/{id}/items/{itemId}`).
+
+```python
+async def get_drive_item():
+    item = await client.drives.by_drive_id('DRIVE_ID').items.by_drive_item_id('ITEM_ID').get()
+    if item:
+        print(item.id, item.name, item.size, item.folder, item.file)
+asyncio.run(get_drive_item())
+```
+
+---
+
+### Get the root folder of a drive
+
+Retrieves the root folder of a drive, including its child count and size (`GET /drives/{id}/root`).
+
+```python
+async def get_drive_root():
+    root = await client.drives.by_drive_id('DRIVE_ID').root.get()
+    if root:
+        print(root.id, root.name, root.folder.child_count, root.root, root.size)
+asyncio.run(get_drive_root())
+```
+
+---
+
+### List items in the root folder
+
+Retrieves the direct children of the root folder (`GET /drives/{id}/items/root/children`).
+
+```python
+async def get_drive():
+    items = await client.drives.by_drive_id('DRIVE_ID').items.by_drive_item_id('root').children.get()
+    if items and items.value:
+        for item in items.value:
+            print(item.id, item.name, item.size, item.folder, item.file)
+asyncio.run(get_drive())
+```
+
+<Tip>
+  Using `'root'` as the item ID is a special alias that always resolves to the root folder, regardless of its actual object ID.
+</Tip>
+
+---
+
+## Working with groups and users
+
+Drives are also accessible through group and user resources. See the [Groups examples](/examples/groups) for listing drives associated with a Microsoft 365 group.
+
+<CodeGroup>
+
+```python user drive
+# Get a user's OneDrive
+async def get_user_drive():
+    drive = await client.users.by_user_id('USER_ID').drive.get()
+    if drive:
+        print(drive.id, drive.drive_type, drive.web_url)
+asyncio.run(get_user_drive())
+```
+
+```python group drive
+# Get a group's SharePoint document library drive
+async def get_group_drive():
+    drive = await client.groups.by_group_id('GROUP_ID').drive.get()
+    if drive:
+        print(drive.id, drive.drive_type, drive.web_url)
+asyncio.run(get_group_drive())
+```
+
+</CodeGroup>
+
+---
+
+## Required permissions
+
+<AccordionGroup>
+  <Accordion title="List / get drives">
+    Requires `Files.Read.All` or `Files.ReadWrite.All` (application or delegated).
+  </Accordion>
+  <Accordion title="List / get drive items">
+    Requires `Files.Read.All` or `Files.ReadWrite.All` (application or delegated).
+  </Accordion>
+  <Accordion title="Get root folder and children">
+    Requires `Files.Read.All` or `Files.ReadWrite.All` (application or delegated).
+  </Accordion>
+  <Accordion title="Access user drives">
+    Requires `Files.Read.All` or `Files.ReadWrite.All` (application). For delegated access to the signed-in user's drive, `Files.Read` is sufficient.
+  </Accordion>
+</AccordionGroup>

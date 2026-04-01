@@ -1,0 +1,73 @@
+---
+title: "Installation"
+description: "Install the Microsoft Graph SDK for Python and configure your development environment."
+---
+
+## Requirements
+
+- Python **3.9 or later** (3.9 through 3.13 are supported and tested)
+- `pip` (comes with Python)
+
+## Setup
+
+<Steps>
+  <Step title="Install the SDK">
+    Install the `msgraph-sdk` package from PyPI:
+
+    ```bash
+    pip install msgraph-sdk
+    ```
+
+    <Note>
+      The Microsoft Graph SDK for Python is a large package. The initial installation may take a few minutes to complete while pip downloads and installs the SDK and its dependencies.
+    </Note>
+  </Step>
+
+  <Step title="Enable long paths on Windows (if needed)">
+    On Windows, you may encounter the following error during installation:
+
+    ```
+    Could not install packages due to an OSError
+    ```
+
+    This is caused by the Windows default maximum file path limitation. To fix it, enable long paths in your environment. See [Enable Long Paths in Windows 10, Version 1607, and Later](https://learn.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation?tabs=powershell#enable-long-paths-in-windows-10-version-1607-and-later) for instructions.
+  </Step>
+
+  <Step title="Install azure-identity (optional)">
+    `azure-identity` is included as a dependency of `msgraph-sdk` and is installed automatically. If you need a specific version or want to manage it separately, install it directly:
+
+    ```bash
+    pip install azure-identity
+    ```
+
+    `azure-identity` provides credential classes such as `ClientSecretCredential`, `DeviceCodeCredential`, `InteractiveBrowserCredential`, and `DefaultAzureCredential` that the SDK uses for authentication.
+  </Step>
+
+  <Step title="Verify the installation">
+    Confirm the SDK is installed correctly by importing `GraphServiceClient`:
+
+    ```python
+    from msgraph import GraphServiceClient
+    print("SDK ready")
+    ```
+
+    If the import succeeds and `SDK ready` is printed, your environment is configured correctly.
+  </Step>
+</Steps>
+
+## Installed dependencies
+
+Running `pip install msgraph-sdk` installs the following packages:
+
+| Package | Description |
+|---|---|
+| `azure-identity` | Credential classes for Microsoft identity platform authentication |
+| `microsoft-kiota-serialization-json` | JSON serialization for request and response bodies |
+| `microsoft-kiota-serialization-text` | Plain-text serialization support |
+| `microsoft-kiota-serialization-form` | Form-encoded serialization support |
+| `microsoft-kiota-serialization-multipart` | Multipart serialization support |
+| `msgraph_core` | Core HTTP middleware, retry logic, and redirect handling |
+
+<Tip>
+  Use a virtual environment (`python -m venv .venv`) to isolate the SDK and its dependencies from other projects on your machine.
+</Tip>

@@ -1,80 +1,124 @@
 ---
 title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+description: "Make your first Microsoft Graph API call in Python — from installation to a working response."
 ---
 
-## Get started in three steps
+This guide walks through installing the SDK, configuring credentials, and retrieving a user from Microsoft Graph using application permissions.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
+- Python 3.9 or later
+- An Azure AD app registration with a client secret and the `User.Read.All` (or similar) application permission granted and admin-consented. See [Register your app with the Microsoft Identity Platform](https://docs.microsoft.com/graph/auth-register-app-v2) for setup steps.
+- Your **tenant ID**, **client ID**, and **client secret** from the app registration.
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+<Note>
+  All requests to Microsoft Graph through this SDK are **asynchronous**. Every API method returns a coroutine that must be awaited inside an `async` function and run with `asyncio.run()` (or an equivalent async runner). The SDK does not provide synchronous wrappers.
+</Note>
 
-### Step 2: Deploy your changes
+## Steps
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+<Steps>
+  <Step title="Install the SDK">
+    Install `msgraph-sdk` from PyPI:
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    ```bash
+    pip install msgraph-sdk
+    ```
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+    The package is large; the first install may take a few minutes.
+  </Step>
 
-### Step 3: Go live
+  <Step title="Set up credentials">
+    Use `ClientSecretCredential` from `azure.identity.aio` to authenticate with application permissions. This credential is suitable for daemon apps and background services that run without a signed-in user.
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    ```python
+    from azure.identity.aio import ClientSecretCredential
+
+    credential = ClientSecretCredential(
+        'tenant_id',
+        'client_id',
+        'client_secret'
+    )
+    scopes = ['https://graph.microsoft.com/.default']
+    ```
+
+    Replace `tenant_id`, `client_id`, and `client_secret` with the values from your Azure AD app registration. The scope `https://graph.microsoft.com/.default` requests all application permissions that have been granted to the app.
+  </Step>
+
+  <Step title="Initialize GraphServiceClient">
+    Create a `GraphServiceClient` by passing the credential and scopes. This object is the entry point for all API calls.
+
+    ```python
+    from msgraph import GraphServiceClient
+
+    client = GraphServiceClient(credentials=credential, scopes=scopes)
+    ```
+
+    The client uses the default `https://graph.microsoft.com` base URL and a pre-configured `httpx.AsyncClient` with retry and redirect middleware.
+  </Step>
+
+  <Step title="Make a request">
+    Call `client.users.by_user_id()` to fetch a specific user by their user principal name or object ID. All request methods are async and must be awaited.
+
+    ```python
+    import asyncio
+
+    async def get_user():
+        user = await client.users.by_user_id('userPrincipalName').get()
+        if user:
+            print(user.display_name)
+
+    asyncio.run(get_user())
+    ```
+  </Step>
+
+  <Step title="Handle the response">
+    The response is deserialized into a strongly-typed `User` model. Access any property directly as an attribute. If the request fails, `get()` raises an `APIError` with a structured error message.
+
+    ```python
+    from kiota_abstractions.api_error import APIError
+
+    async def get_user():
+        try:
+            user = await client.users.by_user_id('userPrincipalName').get()
+            if user:
+                print(user.display_name)
+        except APIError as e:
+            print(f'Error: {e.error.message}')
+
+    asyncio.run(get_user())
+    ```
+  </Step>
+</Steps>
+
+## Complete example
+
+The following is a complete, self-contained script from the SDK README:
+
+```python
+import asyncio
+from azure.identity.aio import ClientSecretCredential
+from msgraph import GraphServiceClient
+
+credential = ClientSecretCredential(
+    'tenant_id',
+    'client_id',
+    'client_secret'
+)
+scopes = ['https://graph.microsoft.com/.default']
+client = GraphServiceClient(credentials=credential, scopes=scopes)
+
+async def get_user():
+    user = await client.users.by_user_id('userPrincipalName').get()
+    if user:
+        print(user.display_name)
+asyncio.run(get_user())
+```
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
+Now that you have a working client, configure the right credential type for your application:
 
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
+<Card title="Authentication overview" icon="key" href="/authentication/overview">
+  Choose between application permissions and delegated permissions, and learn which credential class fits your use case.
 </Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

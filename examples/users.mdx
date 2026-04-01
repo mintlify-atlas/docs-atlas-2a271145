@@ -1,0 +1,192 @@
+---
+title: "Users"
+description: "Examples for listing, searching, and managing users in Microsoft Graph."
+---
+
+<Info>
+  These examples use `ClientSecretCredential` with application permissions. For operations that require a signed-in user (such as `/me`), use a delegated credential like `InteractiveBrowserCredential` or `DeviceCodeCredential`.
+</Info>
+
+## Client setup
+
+<Steps>
+  <Step title="Install the SDK">
+    ```bash
+    pip install msgraph-sdk
+    ```
+  </Step>
+  <Step title="Configure credentials and initialize the client">
+    ```python
+    import asyncio
+
+    from azure.identity import ClientSecretCredential
+    from msgraph import GraphServiceClient
+
+    # Create a credential object. Used to authenticate requests
+    credential = ClientSecretCredential(
+        tenant_id='TENANT_ID',
+        client_id='CLIENT_ID',
+        client_secret='CLIENT_SECRET'
+    )
+    scopes = ['https://graph.microsoft.com/.default']
+
+    # Create an API client with the credentials and scopes.
+    client = GraphServiceClient(credentials=credential, scopes=scopes)
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  Replace `TENANT_ID`, `CLIENT_ID`, and `CLIENT_SECRET` with your Azure app registration values. Never commit credentials to source control — use environment variables or a secrets manager instead.
+</Note>
+
+---
+
+## Examples
+
+### List all users
+
+Retrieves all users in the tenant (`GET /users`).
+
+```python
+async def get_users():
+    users = await client.users.get()
+    if users and users.value:
+        for user in users.value:
+            print(user.id, user.display_name, user.mail)
+asyncio.run(get_users())
+```
+
+<Tip>
+  By default the API returns up to 100 users. Use `$top` and `$skipToken` (via `odata_next_link`) to paginate through larger result sets.
+</Tip>
+
+---
+
+### Get a specific user
+
+Retrieves a single user by ID or user principal name (`GET /users/{id | userPrincipalName}`).
+
+```python
+async def get_user():
+    user = await client.users.by_user_id('USER_ID').get()
+    if user:
+        print(user.user_principal_name, user.display_name, user.id)
+asyncio.run(get_user())
+```
+
+Replace `USER_ID` with either the user's object ID or their user principal name (e.g. `john.doe@contoso.com`).
+
+---
+
+### List transitive memberships of a user
+
+Retrieves all groups and directory roles a user belongs to, including through nested group membership (`GET /users/{id}/transitiveMemberOf`).
+
+```python
+async def get_memberships():
+    memberships = await client.users.by_user_id('USER_ID').transitive_member_of.get()
+    if memberships and memberships.value:
+        for membership in memberships.value:
+            obj = await client.directory_objects.by_directory_object_id(membership.id).get()
+            if obj and obj.odata_type == '#microsoft.graph.group':
+                group = await client.groups.by_group_id(obj.id).get()
+                if group:
+                    print(group.id, group.group_types, group.display_name, group.mail)
+asyncio.run(get_memberships())
+```
+
+<Note>
+  `transitive_member_of` returns raw directory objects. The example above filters for groups by checking `odata_type` and then fetches the full group object.
+</Note>
+
+---
+
+### Search users by name
+
+Searches for users matching a name across multiple profile fields using the OData `$search` parameter (`GET /users?$search=...`).
+
+<Warning>
+  The `$search` query parameter requires the `ConsistencyLevel: eventual` request header and the `User.ReadBasic.All` or `User.Read.All` permission. This example uses `AzureCliCredential` — run `az login` before executing.
+</Warning>
+
+```python
+import asyncio
+
+from azure.identity import AzureCliCredential
+from msgraph import GraphServiceClient
+from msgraph.generated.users.users_request_builder import UsersRequestBuilder
+
+
+async def find_user(user_name: str, client: GraphServiceClient) -> None:
+    # The query used here is the same when searching for users in Azure AD via web console
+    query_params = UsersRequestBuilder.UsersRequestBuilderGetQueryParameters(
+        search=[
+            f'("displayName:{user_name}" OR "mail:{user_name}" OR "userPrincipalName:{user_name}" OR "givenName:{user_name}" OR "surName:{user_name}" OR "otherMails:{user_name}")'
+        ],
+    )
+    request_configuration = (
+        UsersRequestBuilder.UsersRequestBuilderGetRequestConfiguration(
+            query_parameters=query_params,
+        )
+    )
+    request_configuration.headers.add("ConsistencyLevel", "eventual")
+
+    response = await client.users.get(request_configuration=request_configuration)
+    if response.value:
+        user = response.value[0]
+        print(
+            f"Found user for {user_name} in the Azure AD with user principal name {user.user_principal_name} and display name {user.display_name}"
+        )
+    else:
+        print(f"{user_name} user in the Azure AD not found")
+
+
+def main():
+    # Use cli credentials to authenticate against Azure
+    # Before running script do `az login`
+    credential = AzureCliCredential()
+    scopes = ["https://graph.microsoft.com/.default"]
+    client = GraphServiceClient(credentials=credential, scopes=scopes)
+    asyncio.run(find_user("john", client))
+
+
+main()
+```
+
+---
+
+## Error handling
+
+Wrap requests in a `try`/`except` block to catch API errors:
+
+```python
+from kiota_abstractions.api_error import APIError
+
+async def get_user():
+    try:
+        user = await client.users.by_user_id('USER_ID').get()
+        print(user.user_principal_name, user.display_name, user.id)
+    except APIError as e:
+        print(f'Error: {e.error.message}')
+asyncio.run(get_user())
+```
+
+---
+
+## Required permissions
+
+<AccordionGroup>
+  <Accordion title="List all users (GET /users)">
+    Requires `User.Read.All` or `User.ReadWrite.All` (application) or `User.ReadBasic.All` (delegated).
+  </Accordion>
+  <Accordion title="Get a specific user (GET /users/{id})">
+    Requires `User.Read.All` or `User.ReadWrite.All` (application). Delegated: `User.Read` for own profile, `User.ReadBasic.All` for others.
+  </Accordion>
+  <Accordion title="Transitive memberships (GET /users/{id}/transitiveMemberOf)">
+    Requires `User.Read.All`, `GroupMember.Read.All`, or `Directory.Read.All`.
+  </Accordion>
+  <Accordion title="Search users (GET /users?$search=...)">
+    Requires `User.ReadBasic.All`, `User.Read.All`, or `Directory.Read.All`. The `ConsistencyLevel: eventual` header is mandatory.
+  </Accordion>
+</AccordionGroup>

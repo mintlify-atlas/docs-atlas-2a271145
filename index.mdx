@@ -1,97 +1,100 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Microsoft Graph SDK for Python"
+description: "Build Python applications that connect to Microsoft 365 data and services using the official Microsoft Graph SDK."
 ---
 
-## Setting up
+The Microsoft Graph SDK for Python gives you a fluent, async-first interface to the [Microsoft Graph API](https://docs.microsoft.com/graph/overview). With strongly-typed model classes, built-in authentication, and automatic pagination, you can access users, groups, mail, files, and hundreds of other Microsoft 365 resources from your Python applications.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install the SDK with pip and set up your environment in minutes.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Make your first Microsoft Graph API call with a working code example.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Authentication" icon="lock" href="/authentication/overview">
+    Learn how to authenticate with delegated or application permissions.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Making Requests" icon="code" href="/requests/basic-requests">
+    Explore the fluent request builder pattern, pagination, batching, and error handling.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## Why use this SDK?
 
-Everything you need to create world-class documentation.
+<CardGroup cols={2}>
+  <Card title="Async-first" icon="bolt">
+    Every request returns a coroutine. Use `asyncio`, `anyio`, or `trio` to run concurrent Graph API calls efficiently.
+  </Card>
+  <Card title="Strongly typed" icon="shield-check">
+    Auto-generated model classes with fully typed properties match the Graph API v1.0 metadata exactly.
+  </Card>
+  <Card title="Fluent request builders" icon="wand-magic-sparkles">
+    Chain methods like `client.users.by_user_id(id).messages.get()` with IDE autocomplete at every step.
+  </Card>
+  <Card title="Azure Identity integration" icon="key">
+    Drop in any Azure Identity credential — `ClientSecretCredential`, `DeviceCodeCredential`, and more.
+  </Card>
+</CardGroup>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+## Get started in three steps
 
-## Need inspiration?
+<Steps>
+  <Step title="Install the SDK">
+    ```bash
+    pip install msgraph-sdk
+    ```
+  </Step>
+  <Step title="Create a GraphServiceClient">
+    ```python
+    from azure.identity import ClientSecretCredential
+    from msgraph import GraphServiceClient
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+    credential = ClientSecretCredential(
+        tenant_id="TENANT_ID",
+        client_id="CLIENT_ID",
+        client_secret="CLIENT_SECRET",
+    )
+    client = GraphServiceClient(credentials=credential, scopes=["https://graph.microsoft.com/.default"])
+    ```
+  </Step>
+  <Step title="Make your first API call">
+    ```python
+    import asyncio
+
+    async def get_users():
+        users = await client.users.get()
+        for user in users.value:
+            print(user.display_name, user.mail)
+
+    asyncio.run(get_users())
+    ```
+  </Step>
+</Steps>
+
+## Explore by resource
+
+<CardGroup cols={3}>
+  <Card title="Users" icon="user" href="/examples/users">
+    List, search, and manage user accounts in your tenant.
+  </Card>
+  <Card title="Groups" icon="users" href="/examples/groups">
+    Work with Microsoft 365 groups, members, and drives.
+  </Card>
+  <Card title="Mail" icon="envelope" href="/examples/mail">
+    Read and send email messages on behalf of users.
+  </Card>
+  <Card title="Applications" icon="grid-2" href="/examples/applications">
+    Manage app registrations in your Azure AD tenant.
+  </Card>
+  <Card title="Drives" icon="hard-drive" href="/examples/drives">
+    Access OneDrive files and SharePoint document libraries.
+  </Card>
+  <Card title="Upgrading" icon="arrow-up-right" href="/advanced/upgrading">
+    Migrating from an older version? Read the upgrade guide.
+  </Card>
+</CardGroup>
+
+<Note>
+  This SDK targets the Microsoft Graph **v1.0** API. For access to preview features, use the [msgraph-beta-sdk-python](https://github.com/microsoftgraph/msgraph-beta-sdk-python) package instead.
+</Note>

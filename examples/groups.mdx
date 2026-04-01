@@ -1,0 +1,211 @@
+---
+title: "Groups"
+description: "Examples for listing and managing Microsoft 365 groups, members, and drives."
+---
+
+<Info>
+  These examples use `ClientSecretCredential` with application permissions (`https://graph.microsoft.com/.default`). Ensure your app registration has the appropriate Microsoft Graph permissions granted and admin-consented before running.
+</Info>
+
+## Client setup
+
+<Steps>
+  <Step title="Install the SDK">
+    ```bash
+    pip install msgraph-sdk
+    ```
+  </Step>
+  <Step title="Configure credentials and initialize the client">
+    ```python
+    import asyncio
+
+    from azure.identity import ClientSecretCredential
+    from msgraph import GraphServiceClient
+
+    # Create a credential object. Used to authenticate requests
+    credential = ClientSecretCredential(
+        tenant_id='TENANT_ID',
+        client_id='CLIENT_ID',
+        client_secret='CLIENT_SECRET'
+    )
+    scopes = ['https://graph.microsoft.com/.default']
+
+    # Create an API client with the credentials and scopes.
+    client = GraphServiceClient(credentials=credential, scopes=scopes)
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  Replace `TENANT_ID`, `CLIENT_ID`, and `CLIENT_SECRET` with values from your Azure app registration. Store secrets in environment variables — never hard-code them.
+</Note>
+
+---
+
+## Examples
+
+### List all groups
+
+Retrieves all groups in the tenant (`GET /groups`).
+
+```python
+async def get_groups():
+    groups = await client.groups.get()
+    if groups and groups.value:
+        for group in groups.value:
+            print(group.id, group.display_name)
+asyncio.run(get_groups())
+```
+
+<Tip>
+  The response is paginated at 100 items by default. Check `groups.odata_next_link` and call `.with_url(groups.odata_next_link).get()` to fetch subsequent pages.
+</Tip>
+
+---
+
+### Get a specific group
+
+Retrieves a single group by its object ID (`GET /groups/{id}`).
+
+```python
+async def get_group():
+    group = await client.groups.by_group_id('GROUP_ID').get()
+    if group:
+        print(group.id, group.display_name, group.description, group.group_types,
+            group.security_enabled)
+asyncio.run(get_group())
+```
+
+---
+
+### List all members in a group
+
+Lists the direct members of a group and resolves each to a user object (`GET /groups/{id}/members`).
+
+```python
+async def get_group_members():
+    members = await client.groups.by_group_id('GROUP_ID').members.get()
+    if members and members.value:
+        for member in members.value:
+            user = await client.users.by_user_id(member.id).get()
+            if user:
+                print(user.display_name, user.mail)
+asyncio.run(get_group_members())
+```
+
+<Note>
+  `members` can contain users, service principals, and other groups. The example above assumes all members are users. Check `member.odata_type` if your group contains mixed member types.
+</Note>
+
+---
+
+### List a group team's SharePoint sites
+
+Retrieves all SharePoint sites associated with a Microsoft 365 group (`GET /groups/{id}/sites`).
+
+```python
+async def get_group_sites():
+    sites = await client.groups.by_group_id('GROUP_ID').sites.get()
+    if sites and sites.value:
+        for site in sites.value:
+            print(site.id, site.web_url)
+asyncio.run(get_group_sites())
+```
+
+<Info>
+  This endpoint is only available for Microsoft 365 groups (formerly Office 365 groups) that have an associated SharePoint team site.
+</Info>
+
+---
+
+### List a group's transitive members
+
+Retrieves all members of a group, including members of nested subgroups (`GET /groups/{id}/transitiveMembers`).
+
+```python
+async def get_group_transitive_members():
+    members = await client.groups.by_group_id('GROUP_ID').transitive_members.get()
+    if members and members.value:
+        for member in members.value:
+            obj = await client.directory_objects.by_directory_object_id(member.id).get()
+            if obj and obj.odata_type == '#microsoft.graph.user':
+                user = await client.users.by_user_id(obj.id).get()
+                if user:
+                    print(user.id, user.display_name, user.mail)
+asyncio.run(get_group_transitive_members())
+```
+
+---
+
+### List all group drives
+
+Lists all OneDrive/SharePoint document library drives associated with a group (`GET /groups/{id}/drives`).
+
+```python
+async def get_group_drives():
+    drives = await client.groups.by_group_id('GROUP_ID').drives.get()
+    if drives and drives.value:
+        for drive in drives.value:
+            print(drive.id, drive.name)
+asyncio.run(get_group_drives())
+```
+
+---
+
+### Get a specific group drive
+
+Retrieves a single drive by its ID within the context of a group (`GET /groups/{id}/drives/{driveId}`).
+
+```python
+async def get_group_drive():
+    drive = await client.groups.by_group_id(
+        'GROUP_ID'
+        ).drives.by_drive_id(
+            'DRIVE_ID'
+            ).get()
+    if drive:
+        print(drive.id, drive.drive_type, drive.name, drive.web_url, drive.items)
+asyncio.run(get_group_drive())
+```
+
+---
+
+## Pagination
+
+For groups with more than 100 members, use `odata_next_link` to iterate over pages:
+
+```python
+async def get_all_group_members(group_id: str):
+    members = await client.groups.by_group_id(group_id).members.get()
+    if members:
+        for member in members.value:
+            print(member.display_name, member.mail, member.id)
+
+    # Iterate over result batches > 100 rows
+    while members is not None and members.odata_next_link is not None:
+        members = await client.groups.by_group_id(group_id).members.with_url(members.odata_next_link).get()
+        if members:
+            for member in members.value:
+                print(member.display_name, member.mail, member.id)
+
+asyncio.run(get_all_group_members('GROUP_ID'))
+```
+
+---
+
+## Required permissions
+
+<AccordionGroup>
+  <Accordion title="List / get groups">
+    Requires `Group.Read.All` or `Directory.Read.All` (application or delegated).
+  </Accordion>
+  <Accordion title="List members / transitive members">
+    Requires `GroupMember.Read.All`, `Group.Read.All`, or `Directory.Read.All`.
+  </Accordion>
+  <Accordion title="List group sites">
+    Requires `Sites.Read.All` (application) or `Sites.Read.All` (delegated).
+  </Accordion>
+  <Accordion title="List / get group drives">
+    Requires `Files.Read.All` or `Files.ReadWrite.All` (application or delegated).
+  </Accordion>
+</AccordionGroup>

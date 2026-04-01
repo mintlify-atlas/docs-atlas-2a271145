@@ -1,0 +1,99 @@
+---
+title: "Pagination"
+description: "Iterate over large result sets using odata_next_link in Microsoft Graph responses."
+---
+
+Microsoft Graph returns collection responses in pages. By default, most collections return a maximum of 100 items per page. When more results are available, the response includes an `odata_next_link` property containing a pre-built URL to retrieve the next page.
+
+## How pagination works
+
+<Steps>
+  <Step title="Make the initial request">
+    Call `get()` on a collection builder to retrieve the first page of results. The response object contains a `value` list and, when more pages exist, an `odata_next_link` string.
+  </Step>
+  <Step title="Check for odata_next_link">
+    After processing the first page, check whether `odata_next_link` is set on the response. If it is `None`, you have received all results.
+  </Step>
+  <Step title="Fetch subsequent pages with with_url()">
+    Pass `odata_next_link` to the `with_url()` method on the same collection builder. This overrides the URL and carries all necessary continuation tokens. Call `get()` again to retrieve the next page.
+  </Step>
+  <Step title="Repeat until odata_next_link is None">
+    Continue the loop until the response has no `odata_next_link`, which means you have consumed the full result set.
+  </Step>
+</Steps>
+
+## Iterating over pages
+
+The following example retrieves all members of a group, iterating through pages of up to 100 results each:
+
+```python
+# get group members
+members = await client.groups.by_group_id(id).members.get()
+if members:
+    print(f"Members:")
+    for i in range(len(members.value)):
+        print(f"display_name: {members.value[i].display_name}, mail: {members.value[i].mail}, id: {members.value[i].id}")
+
+# iterate over result batches > 100 rows
+while members is not None and members.odata_next_link is not None:
+    members = await client.groups.by_group_id(id).members.with_url(members.odata_next_link).get()
+    if members:
+        for i in range(len(members.value)):
+            print(f"display_name: {members.value[i].display_name}, mail: {members.value[i].mail}, id: {members.value[i].id}")
+```
+
+<Note>
+`with_url()` is available on all collection request builders. The `odata_next_link` URL contains server-side state, so do not modify it before passing it to `with_url()`.
+</Note>
+
+## Controlling page size with $top
+
+Use the `$top` query parameter to request a specific page size. The API may return fewer results than requested, but never more. See [Query Parameters](/requests/query-parameters) for how to pass query parameters.
+
+```python
+from msgraph.generated.users.users_request_builder import UsersRequestBuilder
+
+async def get_users_paged():
+    query_params = UsersRequestBuilder.UsersRequestBuilderGetQueryParameters(
+        top=25,
+        select=['id', 'displayName', 'mail'],
+    )
+    request_config = UsersRequestBuilder.UsersRequestBuilderGetRequestConfiguration(
+        query_parameters=query_params
+    )
+    users = await client.users.get(request_configuration=request_config)
+    if users and users.value:
+        for user in users.value:
+            print(user.id, user.display_name)
+
+asyncio.run(get_users_paged())
+```
+
+<Warning>
+Microsoft Graph enforces a maximum page size for each resource regardless of the `$top` value you provide. If you request more than the allowed maximum, the API silently caps the page size at its limit and returns `odata_next_link` for remaining results.
+</Warning>
+
+## Wrapping pagination in a helper
+
+For cleaner code, extract the pagination loop into a reusable helper:
+
+```python
+async def get_all_users(client):
+    all_users = []
+    response = await client.users.get()
+
+    while response is not None:
+        if response.value:
+            all_users.extend(response.value)
+        if response.odata_next_link is None:
+            break
+        response = await client.users.with_url(response.odata_next_link).get()
+
+    return all_users
+
+asyncio.run(get_all_users(client))
+```
+
+<Tip>
+For very large tenants, collecting all results into a single list can use significant memory. Consider processing each page immediately rather than accumulating all results before acting on them.
+</Tip>

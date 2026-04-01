@@ -1,0 +1,113 @@
+---
+title: "Application Permissions"
+description: "Authenticate as an application (daemon) using client secret or certificate credentials."
+---
+
+Application permissions are the right choice when your code runs without a signed-in user. Common scenarios include:
+
+- Background jobs and scheduled tasks
+- Daemon services that process data on their own schedule
+- Server-to-server integrations where no human interaction occurs
+
+Because there is no user in the session, endpoints that require a user context (such as `/me`) are unavailable. Access resources by explicit ID instead, for example `GET /users/{id}`.
+
+## Register your app in Azure AD
+
+Before writing any code you need an app registration with the appropriate application permissions granted and admin-consented. Follow the [Register your app with the Microsoft Identity Platform](https://docs.microsoft.com/graph/auth-register-app-v2) guide to create the registration and note your **tenant ID**, **client ID**, and either a **client secret** or **certificate**.
+
+## ClientSecretCredential
+
+Use `ClientSecretCredential` from `azure.identity.aio` (the async variant) when your tenant ID, client ID, and client secret are available directly in code or via environment variables.
+
+```python
+import asyncio
+from azure.identity.aio import ClientSecretCredential
+from msgraph import GraphServiceClient
+
+credential = ClientSecretCredential(
+    'TENANT_ID',
+    'CLIENT_ID',
+    'CLIENT_SECRET'
+)
+scopes = ['https://graph.microsoft.com/.default']
+client = GraphServiceClient(credentials=credential, scopes=scopes)
+```
+
+<Warning>
+  Never hard-code credentials in source files. Load them from environment variables or a secrets manager such as Azure Key Vault.
+</Warning>
+
+### Making a request
+
+After constructing the client you can call any application-permission endpoint. The SDK is async by default:
+
+```python
+import asyncio
+from azure.identity.aio import ClientSecretCredential
+from msgraph import GraphServiceClient
+
+credential = ClientSecretCredential(
+    'TENANT_ID',
+    'CLIENT_ID',
+    'CLIENT_SECRET'
+)
+scopes = ['https://graph.microsoft.com/.default']
+client = GraphServiceClient(credentials=credential, scopes=scopes)
+
+async def get_user():
+    user = await client.users.by_user_id('USER_ID').get()
+    if user:
+        print(user.display_name)
+
+asyncio.run(get_user())
+```
+
+## EnvironmentCredential
+
+`EnvironmentCredential` reads connection details from well-known environment variables, which makes it a good choice for containerised workloads and CI/CD pipelines where secrets are injected at runtime.
+
+```python
+import asyncio
+from azure.identity.aio import EnvironmentCredential
+from msgraph import GraphServiceClient
+
+credential = EnvironmentCredential()
+scopes = ['https://graph.microsoft.com/.default']
+client = GraphServiceClient(credentials=credential, scopes=scopes)
+```
+
+Set the following environment variables before running your application:
+
+| Variable | Description |
+|---|---|
+| `AZURE_TENANT_ID` | Your Azure AD tenant ID |
+| `AZURE_CLIENT_ID` | The application (client) ID |
+| `AZURE_CLIENT_SECRET` | The client secret value |
+
+<Tip>
+  `EnvironmentCredential` also supports certificate-based authentication. Set `AZURE_CLIENT_CERTIFICATE_PATH` instead of `AZURE_CLIENT_SECRET` to use a PEM or PFX certificate.
+</Tip>
+
+## Sync vs async credentials
+
+Both sync and async credential classes from `azure.identity` are supported by `GraphServiceClient`. The async variants (from `azure.identity.aio`) are recommended for applications that already use `asyncio`, `anyio`, or `trio`, because they avoid blocking the event loop during token acquisition.
+
+<CodeGroup>
+
+```python async (recommended)
+from azure.identity.aio import ClientSecretCredential
+from msgraph import GraphServiceClient
+
+credential = ClientSecretCredential('TENANT_ID', 'CLIENT_ID', 'CLIENT_SECRET')
+client = GraphServiceClient(credentials=credential, scopes=['https://graph.microsoft.com/.default'])
+```
+
+```python sync
+from azure.identity import ClientSecretCredential
+from msgraph import GraphServiceClient
+
+credential = ClientSecretCredential('TENANT_ID', 'CLIENT_ID', 'CLIENT_SECRET')
+client = GraphServiceClient(credentials=credential, scopes=['https://graph.microsoft.com/.default'])
+```
+
+</CodeGroup>

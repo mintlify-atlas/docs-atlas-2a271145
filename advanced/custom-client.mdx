@@ -1,0 +1,115 @@
+---
+title: "Custom HTTP Client"
+description: "Configure a custom httpx.AsyncClient with your own middleware, proxies, and timeouts."
+---
+
+By default, `GraphRequestAdapter` creates its own HTTP client using `GraphClientFactory.create_with_default_middleware()`. You can replace this with a custom `httpx.AsyncClient` to control timeouts, connection limits, proxies, and other transport settings.
+
+## Default behavior
+
+When you construct a `GraphRequestAdapter` without passing an `http_client`, the adapter calls `GraphClientFactory.create_with_default_middleware()` internally and registers the SDK's default middleware options:
+
+```python
+class GraphRequestAdapter(BaseGraphRequestAdapter):
+    def __init__(self, auth_provider: AuthenticationProvider,
+                 client: Optional[httpx.AsyncClient] = None) -> None:
+        if client is None:
+            client = GraphClientFactory.create_with_default_middleware(options=options)
+        super().__init__(auth_provider, http_client=client)
+```
+
+This means the URL-replacement and telemetry middleware are always active unless you explicitly supply your own client.
+
+## Passing a custom `httpx.AsyncClient`
+
+To use your own client, wrap it with `GraphClientFactory.create_with_default_middleware()` so the SDK's middleware pipeline is still applied, then pass the result to `GraphRequestAdapter`.
+
+<Steps>
+  <Step title="Install dependencies">
+    ```bash
+    pip install msgraph-sdk httpx
+    ```
+  </Step>
+  <Step title="Create the HTTP client">
+    ```python
+    import httpx
+    from msgraph_core import GraphClientFactory
+
+    http_client = GraphClientFactory.create_with_default_middleware(
+        client=httpx.AsyncClient()
+    )
+    ```
+
+    You can pass any `httpx.AsyncClient` constructor arguments here — for example, custom timeouts or connection limits:
+
+    ```python
+    http_client = GraphClientFactory.create_with_default_middleware(
+        client=httpx.AsyncClient(
+            timeout=httpx.Timeout(30.0, connect=10.0),
+            limits=httpx.Limits(max_connections=20),
+        )
+    )
+    ```
+  </Step>
+  <Step title="Build the request adapter and client">
+    ```python
+    from msgraph import GraphRequestAdapter, GraphServiceClient
+
+    request_adapter = GraphRequestAdapter(auth_provider, http_client)
+    client = GraphServiceClient(request_adapter=request_adapter)
+    ```
+
+    The `auth_provider` argument must be an `AuthenticationProvider` instance, typically `AzureIdentityAuthenticationProvider` from `kiota-authentication-azure`.
+  </Step>
+</Steps>
+
+<Note>
+  `GraphRequestAdapter` accepts `auth_provider` as a required positional argument and `client` as an optional keyword argument of type `Optional[httpx.AsyncClient]`. If `client` is `None`, the adapter creates a default client.
+</Note>
+
+## HTTP proxy configuration
+
+To route SDK traffic through an HTTP proxy, refer to the Microsoft documentation:
+[Configuring the HTTP proxy for the client](https://learn.microsoft.com/graph/sdks/customize-client?tabs=python#configuring-the-http-proxy-for-the-client)
+
+## Getting the raw HTTP response
+
+By default, the SDK deserializes the response body into a typed model. If you need access to the raw `httpx.Response` object — for example, to read headers, status codes, or the raw JSON string — use `NativeResponseHandler` together with `ResponseHandlerOption`.
+
+```python
+import asyncio
+from kiota_abstractions.native_response_handler import NativeResponseHandler
+from kiota_http.middleware.options import ResponseHandlerOption
+from msgraph.generated.users.item.messages.messages_request_builder import MessagesRequestBuilder
+
+async def get_user_messages():
+    request_config = MessagesRequestBuilder.MessagesRequestBuilderGetRequestConfiguration(
+        options=[ResponseHandlerOption(NativeResponseHandler())],
+    )
+    messages = await client.users.by_user_id('USER_ID').messages.get(
+        request_configuration=request_config
+    )
+    print(messages.json())
+
+asyncio.run(get_user_messages())
+```
+
+<Info>
+  When `NativeResponseHandler` is active, the return value is the raw `httpx.Response` object rather than a deserialized model. Call `.json()`, `.text`, or `.content` on it directly.
+</Info>
+
+## Constructor reference
+
+```python
+class GraphRequestAdapter(BaseGraphRequestAdapter):
+    def __init__(
+        self,
+        auth_provider: AuthenticationProvider,
+        client: Optional[httpx.AsyncClient] = None,
+    ) -> None: ...
+```
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `auth_provider` | `AuthenticationProvider` | Yes | Handles token acquisition, caching, and refresh for every request. |
+| `client` | `Optional[httpx.AsyncClient]` | No | A pre-configured `httpx.AsyncClient`. If omitted, `GraphClientFactory.create_with_default_middleware()` is used. |

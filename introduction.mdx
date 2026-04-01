@@ -1,0 +1,72 @@
+---
+title: "Introduction"
+description: "Overview of the Microsoft Graph SDK for Python and what you can build with it."
+---
+
+Microsoft Graph is a unified API endpoint that provides access to data and services across Microsoft 365, Azure Active Directory, Outlook, OneDrive, Teams, SharePoint, and more. With a single authenticated client, you can query users, groups, mail, calendars, files, directory objects, and dozens of other resources — all through a consistent REST interface.
+
+The Microsoft Graph SDK for Python makes it straightforward to integrate these APIs into Python applications without hand-crafting HTTP requests or parsing raw JSON.
+
+## What the SDK provides
+
+- **Strongly-typed models** — every API response is deserialized into a typed Python class (for example, `User`, `Message`, `Group`), so you work with attributes like `user.display_name` instead of raw dictionaries.
+- **Fluent request builders** — navigate the API surface using a chainable builder pattern: `client.users.by_user_id('id').messages.get()`.
+- **Async-first design** — all requests return coroutines. The SDK is built on `asyncio` and is compatible with `asyncio`, `anyio`, and `trio`. Async is a concurrency model that is far more efficient than multi-threading and enables long-lived network connections.
+- **OData support** — pass `$select`, `$filter`, `$top`, `$skip`, and other query parameters through typed configuration objects.
+- **Pagination helpers** — follow `odata_next_link` to page through large result sets.
+- **Error handling** — failed requests raise `APIError` exceptions with structured error details.
+
+## Supported Python versions
+
+The SDK supports Python **3.9 through 3.13**, as declared in [`pyproject.toml`](https://github.com/microsoftgraph/msgraph-sdk-python/blob/main/pyproject.toml):
+
+```toml
+requires-python = ">=3.9"
+```
+
+Tested classifiers include `3.9`, `3.10`, `3.11`, `3.12`, and `3.13`.
+
+## Package and version
+
+The package is published to PyPI as [`msgraph-sdk`](https://pypi.org/project/msgraph-sdk/). The current stable release is **v1.55.0**.
+
+```bash
+pip install msgraph-sdk
+```
+
+## Key dependencies
+
+The SDK pulls in the following packages automatically:
+
+| Package | Purpose |
+|---|---|
+| `azure-identity >=1.12.0` | Credential classes for authentication (ClientSecretCredential, DeviceCodeCredential, etc.) |
+| `microsoft-kiota-serialization-json` | JSON serialization/deserialization via the Kiota runtime |
+| `microsoft-kiota-serialization-text` | Plain-text serialization support |
+| `microsoft-kiota-serialization-form` | Form-encoded serialization support |
+| `microsoft-kiota-serialization-multipart` | Multipart serialization support |
+| `msgraph_core >=1.3.1` | Core HTTP middleware, retry, redirect, and telemetry handlers |
+
+`azure-identity` is included as a direct dependency and does not need to be installed separately, though you can install a newer version independently if needed.
+
+## v1.0 vs beta API
+
+This SDK targets the **v1.0** Microsoft Graph endpoint — the production-stable surface. If you want to try preview or beta APIs (endpoints under `https://graph.microsoft.com/beta`), use the separate [msgraph-beta-sdk-python](https://github.com/microsoftgraph/msgraph-beta-sdk-python) package instead.
+
+<Note>
+  Beta APIs are subject to change and are not covered by the same stability guarantees as v1.0. Use the beta SDK only for experimental work.
+</Note>
+
+## Next steps
+
+<CardGroup cols={3}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install the SDK and set up your Python environment.
+  </Card>
+  <Card title="Quickstart" icon="bolt" href="/quickstart">
+    Make your first API call in minutes.
+  </Card>
+  <Card title="Authentication" icon="key" href="/authentication/overview">
+    Learn how to configure credentials for your application type.
+  </Card>
+</CardGroup>

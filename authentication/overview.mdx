@@ -1,0 +1,82 @@
+---
+title: "Authentication Overview"
+description: "Understand the two permission models in Microsoft Graph and how to choose the right credential for your app."
+---
+
+Microsoft Graph supports two distinct permission models. Choosing the right one determines which credential class you use and what data your app can access.
+
+## Permission types
+
+### Application permissions
+
+Application permissions are used when your app runs without a signed-in user — for example, daemon services, background jobs, or scheduled tasks. The app authenticates as itself using a client secret or certificate registered in Azure AD.
+
+Because there is no user context, endpoints like `/me` are not available. Use resource-specific endpoints such as `/users/{id}` instead.
+
+### Delegated permissions (scopes)
+
+Delegated permissions, also called scopes, are used when a user signs in to your app and the app acts on their behalf. The token carries the user's identity, which means user-specific endpoints like `/me` are available.
+
+The set of scopes you request determines exactly what data the app can read or write on behalf of that user.
+
+## Choosing a credential
+
+The table below maps common Azure Identity credential classes to their permission type and typical use case.
+
+| Credential | Permission type | Use case |
+|---|---|---|
+| `ClientSecretCredential` | Application | Daemon apps, background services |
+| `DeviceCodeCredential` | Delegated | Environments without a browser |
+| `InteractiveBrowserCredential` | Delegated | Apps with browser access |
+| `AuthorizationCodeCredential` | Delegated | Custom web apps |
+
+You can also use `EnvironmentCredential`, `DefaultAzureCredential`, `OnBehalfOfCredential`, or any other class from the [Azure Identity library](https://learn.microsoft.com/en-us/python/api/overview/azure/identity-readme?view=azure-python#credential-classes).
+
+<Note>
+  The Microsoft Graph Python SDK supports both sync and async credential classes from `azure.identity`. Choose the async variants (from `azure.identity.aio`) when working inside an async application.
+</Note>
+
+## How GraphServiceClient accepts credentials
+
+Pass your credential object and a list of scopes directly to `GraphServiceClient`. The client wraps the credential in an `AzureIdentityAuthenticationProvider` and attaches it to every outgoing request automatically.
+
+```python
+from msgraph import GraphServiceClient
+
+client = GraphServiceClient(credentials=credential, scopes=scopes)
+```
+
+The constructor signature is:
+
+```python
+GraphServiceClient(
+    credentials: TokenCredential | AsyncTokenCredential,
+    scopes: list[str] | None = None,
+    request_adapter: GraphRequestAdapter | None = None,
+)
+```
+
+## The default scope
+
+For application permissions, always use the `.default` scope:
+
+```
+https://graph.microsoft.com/.default
+```
+
+This tells Microsoft Identity to issue a token with all application permissions that have been granted to the app in Azure AD. For delegated permissions you can use resource-specific scopes such as `User.Read` or `Mail.Send`.
+
+<Tip>
+  If you omit the `scopes` argument entirely, `GraphServiceClient` defaults to `['https://graph.microsoft.com/.default']`.
+</Tip>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Application permissions" icon="server" href="/authentication/application-permissions">
+    Authenticate as a daemon or background service using client secret or environment credentials.
+  </Card>
+  <Card title="Delegated permissions" icon="user" href="/authentication/delegated-permissions">
+    Authenticate on behalf of a signed-in user using device code, browser, or authorization code flows.
+  </Card>
+</CardGroup>

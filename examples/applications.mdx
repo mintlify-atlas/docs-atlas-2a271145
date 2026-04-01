@@ -1,0 +1,183 @@
+---
+title: "Applications"
+description: "Examples for managing application registrations in Microsoft Graph."
+---
+
+<Info>
+  These examples use `ClientSecretCredential` with application permissions. Managing application objects requires elevated directory permissions — ensure your service principal has the appropriate roles or API permissions granted.
+</Info>
+
+## Client setup
+
+<Steps>
+  <Step title="Install the SDK">
+    ```bash
+    pip install msgraph-sdk
+    ```
+  </Step>
+  <Step title="Configure credentials and initialize the client">
+    ```python
+    import asyncio
+
+    from azure.identity import ClientSecretCredential
+    from msgraph import GraphServiceClient
+
+    # Create a credential object. Used to authenticate requests
+    credential = ClientSecretCredential(
+        tenant_id='TENANT_ID',
+        client_id='CLIENT_ID',
+        client_secret='CLIENT_SECRET',
+    )
+    scopes = ['https://graph.microsoft.com/.default']
+
+    # Create an API client with the credentials and scopes
+    client = GraphServiceClient(credentials=credential, scopes=scopes)
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  Replace `TENANT_ID`, `CLIENT_ID`, and `CLIENT_SECRET` with values from your Azure app registration. Use environment variables or a secrets manager — never hard-code credentials.
+</Note>
+
+---
+
+## Examples
+
+### List all applications
+
+Retrieves all application registrations in the tenant (`GET /applications`).
+
+```python
+async def get_applications():
+    apps = await client.applications.get()
+    if apps and apps.value:
+        for app in apps.value:
+            print(app.id)
+asyncio.run(get_applications())
+```
+
+<Tip>
+  To see more fields, use `$select`. For example, add `select=['id', 'displayName', 'appId', 'createdDateTime']` to your query parameters to retrieve the app's display name and client (application) ID alongside the object ID.
+</Tip>
+
+---
+
+### Get a specific application
+
+Retrieves a single application by its object ID (`GET /applications/{id}`).
+
+```python
+async def get_application():
+    app = await client.applications.by_application_id('APPLICATION_OBJECT_ID').get()
+    if app:
+        print(app.id, app.display_name, app.app_id, app.created_date_time)
+asyncio.run(get_application())
+```
+
+<Note>
+  `APPLICATION_OBJECT_ID` is the **object ID** of the application registration, not the **application (client) ID** (`appId`). You can find the object ID in the Azure portal under **App registrations** > your app > **Overview**.
+</Note>
+
+---
+
+### Create a new application
+
+Creates a new application registration in the tenant (`POST /applications`).
+
+```python
+from msgraph.generated.models.application import Application
+
+async def create_application():
+    request_body = Application()
+    request_body.display_name = 'My New Application'
+
+    app = await client.applications.post(request_body)
+    if app:
+        print(f"Created application: {app.display_name}")
+        print(f"  Object ID:      {app.id}")
+        print(f"  Application ID: {app.app_id}")
+asyncio.run(create_application())
+```
+
+<Warning>
+  Newly created applications have no credentials (secrets or certificates) and no API permissions by default. Add them separately after creation via the Azure portal or additional API calls.
+</Warning>
+
+---
+
+### List applications with `$select` and `$filter`
+
+Use query parameters to refine results — for example, retrieve only the `id`, `displayName`, and `appId` fields for apps whose display name starts with a specific prefix.
+
+```python
+from msgraph.generated.applications.applications_request_builder import ApplicationsRequestBuilder
+
+async def get_filtered_applications():
+    query_params = ApplicationsRequestBuilder.ApplicationsRequestBuilderGetQueryParameters(
+        select=['id', 'displayName', 'appId', 'createdDateTime'],
+        filter="startswith(displayName, 'My')",
+        top=10,
+    )
+    request_config = ApplicationsRequestBuilder.ApplicationsRequestBuilderGetRequestConfiguration(
+        query_parameters=query_params
+    )
+
+    apps = await client.applications.get(request_configuration=request_config)
+    if apps and apps.value:
+        for app in apps.value:
+            print(app.display_name, app.app_id, app.created_date_time)
+asyncio.run(get_filtered_applications())
+```
+
+---
+
+### Delete an application
+
+Deletes an application registration by object ID (`DELETE /applications/{id}`). Deleted applications are moved to a temporary container and can be restored within 30 days.
+
+```python
+async def delete_application():
+    await client.applications.by_application_id('APPLICATION_OBJECT_ID').delete()
+    print("Application deleted.")
+asyncio.run(delete_application())
+```
+
+<Warning>
+  Deleting an application immediately revokes all tokens issued for it and disables any service principals associated with it across all tenants. This action cannot be undone after the 30-day recovery window expires.
+</Warning>
+
+---
+
+## Error handling
+
+```python
+from kiota_abstractions.api_error import APIError
+
+async def get_application_safe():
+    try:
+        app = await client.applications.by_application_id('APPLICATION_OBJECT_ID').get()
+        print(app.display_name, app.app_id)
+    except APIError as e:
+        print(f'Error: {e.error.message}')
+asyncio.run(get_application_safe())
+```
+
+---
+
+## Required permissions
+
+<AccordionGroup>
+  <Accordion title="List / get applications">
+    Requires `Application.Read.All` or `Application.ReadWrite.All` (application or delegated). Alternatively, `Directory.Read.All` covers read access.
+  </Accordion>
+  <Accordion title="Create an application (POST /applications)">
+    Requires `Application.ReadWrite.All` (application or delegated).
+  </Accordion>
+  <Accordion title="Delete an application (DELETE /applications/{id})">
+    Requires `Application.ReadWrite.All` (application or delegated).
+  </Accordion>
+  <Accordion title="Filter applications ($filter)">
+    `$filter` on most properties requires `Application.Read.All` or higher. Some filter expressions may additionally require `ConsistencyLevel: eventual` and `$count=true`.
+  </Accordion>
+</AccordionGroup>

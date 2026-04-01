@@ -1,0 +1,166 @@
+---
+title: "Query Parameters"
+description: "Use $select, $filter, $top, $skip, $search, and $orderby to refine your Microsoft Graph requests."
+---
+
+Query parameters let you filter, sort, and shape the data returned by Microsoft Graph. The SDK exposes OData query parameters through strongly typed `QueryParameters` classes nested inside each request builder.
+
+## How query parameters work
+
+Each request builder exposes a `GetQueryParameters` inner class with typed fields for supported OData parameters. You pass an instance of this class into the corresponding `GetRequestConfiguration` object, then pass that configuration to `get()`.
+
+<Steps>
+  <Step title="Create the query parameters object">
+    Instantiate the `GetQueryParameters` class for the request builder you are using and set the fields you need.
+  </Step>
+  <Step title="Create the request configuration">
+    Instantiate the `GetRequestConfiguration` class, passing the query parameters object as `query_parameters`.
+  </Step>
+  <Step title="Pass the configuration to get()">
+    Call `get(request_configuration=request_config)` with the configuration object.
+  </Step>
+</Steps>
+
+## $select, $top, and $skip
+
+Use `select` to request only specific fields, `top` to limit the number of results, and `skip` to offset the starting position.
+
+```python
+from msgraph.generated.users.item.messages.messages_request_builder import MessagesRequestBuilder
+
+async def get_5_user_messages():
+    query_params = MessagesRequestBuilder.MessagesRequestBuilderGetQueryParameters(
+        select=['subject', 'from'], skip=2, top=5
+    )
+    request_config = MessagesRequestBuilder.MessagesRequestBuilderGetRequestConfiguration(
+        query_parameters=query_params
+    )
+    messages = await (client.users.by_user_id('USER_ID')
+                    .messages
+                    .get(request_configuration=request_config))
+    if messages and messages.value:
+        for msg in messages.value:
+            print(msg.subject)
+
+asyncio.run(get_5_user_messages())
+```
+
+<Tip>
+Use `$select` to reduce response payload size. Only request the fields your application needs, especially when working with large resources like messages or events.
+</Tip>
+
+## $search
+
+The `$search` parameter performs a full-text or keyword search across supported properties. Some resources require the `ConsistencyLevel: eventual` header when using `$search`.
+
+```python
+from msgraph.generated.users.users_request_builder import UsersRequestBuilder
+
+async def find_user(user_name: str):
+    query_params = UsersRequestBuilder.UsersRequestBuilderGetQueryParameters(
+        search=[
+            f'("displayName:{user_name}" OR "mail:{user_name}" OR "userPrincipalName:{user_name}")'
+        ],
+    )
+    request_configuration = UsersRequestBuilder.UsersRequestBuilderGetRequestConfiguration(
+        query_parameters=query_params,
+    )
+    request_configuration.headers.add("ConsistencyLevel", "eventual")
+    response = await client.users.get(request_configuration=request_configuration)
+    if response.value:
+        user = response.value[0]
+        print(user.user_principal_name, user.display_name)
+
+asyncio.run(find_user("john"))
+```
+
+<Note>
+`$search` on the `/users` endpoint requires the `ConsistencyLevel: eventual` header and may also require the `$count=true` query parameter depending on the tenant configuration. Check the [Microsoft Graph documentation](https://learn.microsoft.com/graph/search-query-parameter) for resource-specific requirements.
+</Note>
+
+## $filter
+
+Use `$filter` to retrieve a subset of a collection based on a predicate. Pass the filter expression as a string:
+
+```python
+from msgraph.generated.users.users_request_builder import UsersRequestBuilder
+
+async def get_active_users():
+    query_params = UsersRequestBuilder.UsersRequestBuilderGetQueryParameters(
+        filter="accountEnabled eq true",
+        select=['id', 'displayName', 'mail'],
+    )
+    request_config = UsersRequestBuilder.UsersRequestBuilderGetRequestConfiguration(
+        query_parameters=query_params
+    )
+    users = await client.users.get(request_configuration=request_config)
+    if users and users.value:
+        for user in users.value:
+            print(user.id, user.display_name)
+
+asyncio.run(get_active_users())
+```
+
+## $orderby
+
+Sort results by one or more properties using `$orderby`. Append `asc` or `desc` to control direction:
+
+```python
+from msgraph.generated.users.users_request_builder import UsersRequestBuilder
+
+async def get_users_sorted():
+    query_params = UsersRequestBuilder.UsersRequestBuilderGetQueryParameters(
+        orderby=['displayName asc'],
+        select=['id', 'displayName'],
+    )
+    request_config = UsersRequestBuilder.UsersRequestBuilderGetRequestConfiguration(
+        query_parameters=query_params
+    )
+    users = await client.users.get(request_configuration=request_config)
+    if users and users.value:
+        for user in users.value:
+            print(user.display_name)
+
+asyncio.run(get_users_sorted())
+```
+
+## Setting custom headers
+
+You can add arbitrary HTTP headers to any request configuration object. This is useful for passing OData control headers such as `ConsistencyLevel` or `Prefer`:
+
+```python
+from msgraph.generated.users.item.messages.messages_request_builder import MessagesRequestBuilder
+
+async def get_user_messages():
+    request_config = MessagesRequestBuilder.MessagesRequestBuilderGetRequestConfiguration()
+    request_config.headers.add("prefer", "outlook.body-content-type=text")
+    messages = await client.users.by_user_id('USER_ID').messages.get(request_configuration=request_config)
+    if messages and messages.value:
+        for msg in messages.value:
+            print(msg.subject)
+
+asyncio.run(get_user_messages())
+```
+
+<Tip>
+You can combine query parameters and custom headers in the same request configuration object. Set `query_parameters` in the constructor and call `.headers.add()` afterwards.
+</Tip>
+
+## Supported OData parameters by resource
+
+Not all OData parameters are supported by every Microsoft Graph resource. Consult the [Microsoft Graph API reference](https://learn.microsoft.com/graph/api/overview) for the specific endpoint you are calling to confirm which parameters it supports.
+
+<AccordionGroup>
+  <Accordion title="Common parameters and their typed field names">
+    | OData parameter | Typed field name |
+    |---|---|
+    | `$select` | `select` |
+    | `$filter` | `filter` |
+    | `$top` | `top` |
+    | `$skip` | `skip` |
+    | `$search` | `search` |
+    | `$orderby` | `orderby` |
+    | `$count` | `count` |
+    | `$expand` | `expand` |
+  </Accordion>
+</AccordionGroup>

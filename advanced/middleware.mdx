@@ -1,0 +1,101 @@
+---
+title: "Middleware"
+description: "Understand the middleware pipeline used by the Microsoft Graph SDK for Python."
+---
+
+The Microsoft Graph SDK for Python uses [httpx](https://www.python-httpx.org/) as its HTTP transport layer, via the [kiota-http](https://github.com/microsoft/kiota-http-python) package. All requests pass through a configurable middleware pipeline before being sent and after a response is received.
+
+## Default middleware
+
+`GraphRequestAdapter` registers two middleware options automatically when no custom `httpx.AsyncClient` is supplied.
+
+### `UrlReplaceHandlerOption`
+
+Rewrites URL segments before the request is dispatched. The SDK maps calls to the convenience `client.me` property to the correct `/me` endpoint by substituting the internal placeholder:
+
+```python
+UrlReplaceHandlerOption(
+    enabled=True,
+    replacement_pairs={"/users/me-token-to-replace": "/me"}
+)
+```
+
+When you access `client.me`, the request builder sets the path parameter `user%2Did` to `"me-token-to-replace"`. The middleware then replaces `/users/me-token-to-replace` with `/me` in the outgoing URL.
+
+### `GraphTelemetryHandlerOption`
+
+Attaches SDK version and API version headers to every request so Microsoft can track SDK adoption and surface relevant diagnostics:
+
+```python
+GraphTelemetryHandlerOption(
+    api_version=APIVersion.v1,
+    sdk_version=VERSION
+)
+```
+
+This adds headers such as `SdkVersion` and `client-request-id` to outbound requests. You can disable this option by supplying a custom client that omits it.
+
+### Source
+
+Both options are defined at module level in `graph_request_adapter.py` and passed to `GraphClientFactory.create_with_default_middleware()`:
+
+```python
+from kiota_http.middleware.options import UrlReplaceHandlerOption
+from msgraph_core import APIVersion, GraphClientFactory
+from msgraph_core.middleware.options import GraphTelemetryHandlerOption
+from ._version import VERSION
+
+options = {
+    UrlReplaceHandlerOption.get_key(): UrlReplaceHandlerOption(
+        enabled=True,
+        replacement_pairs={"/users/me-token-to-replace": "/me"}
+    ),
+    GraphTelemetryHandlerOption.get_key(): GraphTelemetryHandlerOption(
+        api_version=APIVersion.v1,
+        sdk_version=VERSION
+    )
+}
+```
+
+## Passing middleware options per request
+
+Some middleware can be configured on a per-request basis by including option instances in the `options` list of a `RequestConfiguration` object. The most common use case is attaching a `NativeResponseHandler` to retrieve the raw `httpx.Response`:
+
+```python
+from kiota_abstractions.native_response_handler import NativeResponseHandler
+from kiota_http.middleware.options import ResponseHandlerOption
+from msgraph.generated.users.item.messages.messages_request_builder import MessagesRequestBuilder
+
+request_config = MessagesRequestBuilder.MessagesRequestBuilderGetRequestConfiguration(
+    options=[ResponseHandlerOption(NativeResponseHandler())]
+)
+
+messages = await client.users.by_user_id('USER_ID').messages.get(
+    request_configuration=request_config
+)
+```
+
+<Tip>
+  Each request builder exposes its own `RequestConfiguration` and `QueryParameters` inner classes, giving you typed access to headers, query params, and middleware options for that specific endpoint.
+</Tip>
+
+## Middleware provided by dependencies
+
+<AccordionGroup>
+  <Accordion title="msgraph-core: GraphClientFactory and BaseGraphRequestAdapter">
+    The `msgraph_core` package provides `GraphClientFactory`, which assembles the default `httpx.AsyncClient` with the full middleware chain, and `BaseGraphRequestAdapter`, which `GraphRequestAdapter` extends. The core package is where retry logic, redirect handling, and the base telemetry pipeline live.
+
+    - GitHub: [microsoftgraph/msgraph-sdk-python-core](https://github.com/microsoftgraph/msgraph-sdk-python-core)
+    - PyPI: `msgraph-core`
+  </Accordion>
+  <Accordion title="kiota-http: transport and handler infrastructure">
+    The `kiota-http` package defines the `AsyncHttpxRequestAdapter` base class, the `MiddlewareHttpxRequestsHandler` transport, and option types such as `ResponseHandlerOption` and `UrlReplaceHandlerOption`. Custom middleware handlers must conform to the `BaseMiddleware` interface from this package.
+
+    - GitHub: [microsoft/kiota-http-python](https://github.com/microsoft/kiota-http-python)
+    - PyPI: `microsoft-kiota-http`
+  </Accordion>
+</AccordionGroup>
+
+<Note>
+  To add completely custom middleware — for example, a logging handler or a circuit breaker — construct your `httpx.AsyncClient` manually using `kiota-http`'s `MiddlewareHttpxRequestsHandler` and pass it through `GraphClientFactory.create_with_default_middleware(client=...)`. See the kiota-http repository for examples.
+</Note>

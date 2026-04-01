@@ -1,0 +1,112 @@
+---
+title: "Batch Requests"
+description: "Combine multiple Microsoft Graph requests into a single HTTP call using batch requests."
+---
+
+Batch requests let you combine up to 20 individual Microsoft Graph API calls into a single HTTP request sent to the `/$batch` endpoint. This reduces the number of round trips to the server and can significantly improve the performance of applications that need to fetch or update multiple resources at once.
+
+<Info>
+Batch requests are defined by the [OData JSON Batch specification](https://docs.oasis-open.org/odata/odata-json-format/v4.01/odata-json-format-v4.01.html#sec_BatchRequestsandResponses). Microsoft Graph supports up to **20 requests** per batch.
+</Info>
+
+## The batch property
+
+`GraphServiceClient` exposes a `batch` property that returns a `BatchRequestBuilder` from the `msgraph_core` package:
+
+```python
+@property
+def batch(self) -> BatchRequestBuilder:
+    """
+    Returns a BatchRequestBuilder to enable batch requests.
+    """
+    from msgraph_core.requests.batch_request_builder import BatchRequestBuilder
+    return BatchRequestBuilder(self.request_adapter)
+```
+
+Access it directly on the client:
+
+```python
+batch_request_builder = client.batch
+```
+
+## Basic batch usage
+
+<Steps>
+  <Step title="Build individual request information objects">
+    Create `BatchRequestItem` objects, each representing one API call. Use `RequestInformation` from `kiota_abstractions` to describe the request method and URL.
+
+    ```python
+    from kiota_abstractions.request_information import RequestInformation
+    from msgraph_core.requests.batch_request_item import BatchRequestItem
+
+    # Build request information for each call
+    user_request = await client.users.by_user_id('USER_ID_1').to_get_request_information()
+    me_request = await client.me.to_get_request_information()
+
+    # Wrap each in a BatchRequestItem
+    user_batch_item = BatchRequestItem(request_information=user_request, batch_id="1")
+    me_batch_item = BatchRequestItem(request_information=me_request, batch_id="2")
+    ```
+  </Step>
+  <Step title="Create a BatchRequestContent object">
+    Collect the items into a `BatchRequestContent`:
+
+    ```python
+    from msgraph_core.requests.batch_request_content import BatchRequestContent
+
+    batch_content = BatchRequestContent([user_batch_item, me_batch_item])
+    ```
+  </Step>
+  <Step title="Post the batch">
+    Send the batch using `client.batch.post()`:
+
+    ```python
+    batch_response = await client.batch.post(batch_content)
+    ```
+  </Step>
+  <Step title="Read individual responses">
+    Use `get_response_by_id()` on the returned `BatchResponseContent` to retrieve the deserialized response for each request:
+
+    ```python
+    from msgraph.generated.models.user import User
+
+    user = await batch_response.get_response_by_id("1", User)
+    me = await batch_response.get_response_by_id("2", User)
+    print(user.display_name, me.display_name)
+    ```
+  </Step>
+</Steps>
+
+## Dependency ordering
+
+Some batch requests must execute in a specific order — for example, creating a resource before updating it. Use the `depends_on` parameter when constructing a `BatchRequestItem` to declare that one request must complete before another starts:
+
+```python
+create_item = BatchRequestItem(request_information=create_request, batch_id="1")
+update_item = BatchRequestItem(
+    request_information=update_request,
+    batch_id="2",
+    depends_on=["1"]  # "2" will not execute until "1" succeeds
+)
+```
+
+<Warning>
+If a request in the batch fails and another request depends on it, the dependent request will not be executed. Check the HTTP status code for each response individually.
+</Warning>
+
+## Limits and considerations
+
+<AccordionGroup>
+  <Accordion title="Maximum requests per batch">
+    Microsoft Graph accepts a maximum of **20 requests** per batch call. If you need to send more, split them across multiple batch calls.
+  </Accordion>
+  <Accordion title="Response ordering">
+    Responses in a batch are not guaranteed to arrive in the same order as the requests. Always use the request ID (e.g., `"1"`, `"2"`) to match responses to requests rather than relying on position.
+  </Accordion>
+  <Accordion title="Throttling in batches">
+    Each request inside a batch counts against the same throttling limits as individual requests. A `429 Too Many Requests` status on a batch item means that specific request was throttled. See [Error Handling](/requests/error-handling) for retry guidance.
+  </Accordion>
+  <Accordion title="Transactions">
+    Batch requests are not transactional. If one request in a batch fails, the others still execute independently. Use `depends_on` to control sequencing, but not for atomicity.
+  </Accordion>
+</AccordionGroup>
